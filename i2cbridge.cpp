@@ -6,7 +6,7 @@
  * Author: Erwin Bejsta
  * August 2020
  *
- * Uses ModbusTag class for PLxx values
+ * Uses ModbusTag class for I2C values
  *
  */
 
@@ -39,6 +39,8 @@
 #include "modbustag.h"
 #include "hardware.h"
 #include "i2cbridge.h"
+#include "hardware/ADS1115.h"
+#include "hardware/MCP9808.h"
 
 using namespace std;
 using namespace libconfig;
@@ -54,6 +56,7 @@ const int version_minor = 0;
 #define MAIN_LOOP_INTERVAL_MAXIMUM 2000   // milli seconds
 
 #define MQTT_BROKER_DEFAULT "127.0.0.1"
+#define MQTT_CLIENT_ID "i2cbridge"
 
 static string cpu_temp_topic = "";
 static string cfgFileName;
@@ -90,14 +93,26 @@ void setMainLoopInterval(int newValue);
 //bool modbus_read_holding_registers(int slaveId, modbus_t *ctx, int addr, int nb, uint16_t *dest);
 //bool modbus_write_tag(ModbusTag *tag);
 //void modbus_write_request(int callbackId, Tag *tag);
+bool i2c_read_process();
 bool mqtt_publish_tag(ModbusTag *tag);
 void mqtt_clear_tags(bool publish_noread, bool clear_retain);
 
-//TagStore ts;
-MQTT mqtt;
+TagStore ts;
+MQTT mqtt(MQTT_CLIENT_ID);
 Config cfg;			// config file
 Hardware hw(false);	// no screen
-TagStore ts;
+
+// ADCs
+//ADS1115 pwr_adc1(ADS1115_ADDRESS_ADDR_GND);	// ADC on power management board
+//ADS1115 pwr_adc2(ADS1115_ADDRESS_ADDR_VDD);	// ADC 2 on power management board
+//ADS1115 visense_adc(ADS1115_ADDRESS_ADDR_SDA);    // ADC on voltage/current sensor board
+// ..._ADDR_GND / VDD / SDA / SCL
+
+
+// Temperature sensors
+#define TEMP_ENV_I2C_ADDR 0x19
+MCP9808 tmp_env(TEMP_ENV_I2C_ADDR);
+//MCP9808 tmp_rack(0x19);
 
 /**
  * log to console and syslog for daemon
@@ -222,6 +237,17 @@ bool cfg_get_str(const std::string &path, std::string &value) {
 
 #pragma mark -- Processing
 
+bool getReading(int address, float *value) {
+	bool retval = false;
+	switch (address) {
+		case 1:
+			break;
+		default:
+			break;
+	}
+	return retval;
+}
+
 /**
  * Process internal variables
  * Local variables are processed at a fixed time interval
@@ -231,7 +257,26 @@ bool cfg_get_str(const std::string &path, std::string &value) {
  */
 bool var_process(void) {
     bool retval = false;
-    //time_t now = time(NULL);
+    time_t now = time(NULL);
+
+	// update CPU temperature
+	Tag *tag = ts.getTag(cpu_temp_topic.c_str());
+	if (tag != NULL) {
+		// read time due ?
+		if (tag->nextReadTime <= now) {
+			tag->setValue(hw.read_cpu_temp());
+			tag->nextReadTime = now + tag->readInterval;
+		retval = true;
+		}
+		// publish time due ?
+		if (tag->nextPublishTime <= now) {
+			if (mqtt.isConnected()) {
+				mqtt.publish(tag->getTopic(), "%.1f", tag->floatValue(), tag->getPublishRetain() );
+				retval = true;
+			}
+			tag->nextPublishTime = now + tag->publishInterval;
+		}
+	}
     return retval;
 }
 
@@ -244,10 +289,10 @@ bool var_process(void) {
 bool process() {
 	bool retval = false;
 	if (mqtt.isConnected()) {
-//		if (pl_read_process()) retval = true;
+		if (i2c_read_process()) retval = true;
 //		if (modbus_write_process()) retval = true;
+//		var_process();	// don't want it in time measuring, doesn't take up much time
 	}
-	var_process();	// don't want it in time measuring, doesn't take up much time
 	return retval;
 }
 
@@ -282,7 +327,7 @@ bool init_hwtags(void)
 	Tag* tp = NULL;
 	std::string topicPath;
 
-	// CPU temperature (optional, may not exist)
+	// CPU temperature (optional, may not exit)
 	if (cfg.lookupValue("cputemp.topic", topicPath)) {
 		cpu_temp_topic = topicPath;
 		tp = ts.addTag(topicPath.c_str());
@@ -295,7 +340,6 @@ bool init_hwtags(void)
 			tp->setPublish();
 			tp->nextPublishTime = time(NULL) + tp->publishInterval;
 		}
-
 	}
 	return true;
 }
@@ -303,7 +347,7 @@ bool init_hwtags(void)
 /** Initialise the tag database (tagstore)
  * @return false on failure
  */
-bool init_tags(void) {
+bool mqtt_init_tags(void) {
 //	Tag* tp = NULL;
 	std::string strValue;
 //	int numTags, iVal, i;
@@ -360,6 +404,7 @@ void mqtt_connect(void) {
  * Initialise the MQTT broker and register callbacks
  */
 bool mqtt_init(void) {
+	//if (!runningAsDaemon) printf("%s\n", __FUNCTION__);
 	bool bValue;
 	if (!runningAsDaemon) {
 		if (cfg.lookupValue("mqtt.debug", bValue)) {
@@ -381,11 +426,13 @@ bool mqtt_init(void) {
  * Iterate over tag store and process every "subscribe" tag
  */
 void mqtt_subscribe_tags(void) {
-	//printf("%s - Start\n", __func__);
+	//mqtt.unsubscribe("vk2ray/pwr/pl20/batv");
+
+	//printf("%s %s - Start\n", __FILE__, __func__);
 /*	Tag* tp = ts.getFirstTag();
 	while (tp != NULL) {
 		if (tp->isSubscribe()) {
-			//printf("%s: %s\n", __func__, tp->getTopic());
+			//printf("%s %s: %s\n", __FILE__, __func__, tp->getTopic());
 			mqtt.subscribe(tp->getTopic());
 		}
 		tp = ts.getNextTag();
@@ -400,7 +447,7 @@ void mqtt_subscribe_tags(void) {
  * This function is registered with MQTT during initialisation
  */
 void mqtt_connection_status(bool status) {
-	//printf("%s - %d\n", __func__, status);
+	//printf("%s %s - %d\n", __FILE__, __func__, status);
 	// subscribe tags when connection is online
 	if (status) {
 		log(LOG_INFO, "Connected to MQTT broker [%s]", mqtt.broker());
@@ -418,7 +465,7 @@ void mqtt_connection_status(bool status) {
 			log(LOG_WARNING, "Disconnected from MQTT broker [%s]", mqtt.broker());
 		}
 	}
-	//printf("%s - done\n", __func__);
+	//printf("%s %s - done\n", __FILE__, __func__);
 }
 
 /**
@@ -430,7 +477,9 @@ void mqtt_connection_status(bool status) {
  * destroyed after this function returns
  */
 void mqtt_topic_update(const struct mosquitto_message *message) {
-	//printf("%s - %s %s\n", __func__, topic, value);
+//	if(mqttDebugEnabled) {
+//		printf("%s %s - %s %s\n", __FILE__, __func__, message->topic, (const char*)message->payload );
+//	};
 /*	Tag *tp = ts.getTag(message->topic);
 	if (tp == NULL) {
 		fprintf(stderr, "%s: <%s> not  in ts\n", __func__, message->topic);
@@ -447,12 +496,15 @@ void mqtt_topic_update(const struct mosquitto_message *message) {
  */
 
 bool mqtt_publish_tag(ModbusTag *tag) {
+	if(mqttDebugEnabled) {
+		printf("%s %s - %s\n", __FILE__, __func__, tag->getTopic());
+	}
 	if (!mqtt.isConnected()) return false;
 	if (tag->getTopicString().empty()) return true;	// don't publish if topic is empty
 	// Publish value if read was OK
 	if (!tag->isNoread()) {
 		mqtt.publish(tag->getTopic(), tag->getFormat(), tag->getScaledValue(), tag->getPublishRetain());
-		//printf("%s - %s \n", __FUNCTION__, tag->getTopic());
+		//printf("%s %s - %s \n", __FILE__, __FUNCTION__, tag->getTopic());
 		return true;
 	}
 	//printf("%s - NoRead: %s \n", __FUNCTION__, tag->getTopic());
@@ -484,7 +536,7 @@ void mqtt_clear_tags(bool publish_noread = true, bool clear_retain = true) {
 	int index = 0, tagIndex = 0;
 	int *tagArray;
 	ModbusTag i2cTag;
-	//printf("%s", __func__);
+	//printf("%s %s", __FILE__, __func__);
 
 	// Iterate over pl tag array
 	//mqtt.setRetain(false);
@@ -521,7 +573,83 @@ void mqtt_clear_tags(bool publish_noread = true, bool clear_retain = true) {
 */
 }
 
-#pragma mark PLxx
+#pragma mark I2C
+
+
+/**
+ * Read single tag from I2C device
+ * @returns: true if successful read
+ */
+bool i2c_read_tag(ModbusTag *tag) {
+	uint16_t registers[4];
+	bool retVal = true;
+	float readValue;
+
+	uint8_t slaveId = tag->getSlaveId();
+
+	//printf("%s %s - %s\n", __FILE__, __func__, tag->getTopic());
+
+	switch(tag->getAddress()) {
+		case 1:
+			tag->setRawValue(uint16_t(tmp_env.readTempC() * 10.0));
+			break;
+		case 101:
+			tag->setRawValue(uint16_t(hw.read_cpu_temp() * 10.0));
+			break;
+		default:
+			printf("%s %s - unknown address %d\n", __FILE__, __func__, tag->getAddress());
+			retVal = false;
+			break;
+	}
+	if (retVal) {
+		mqtt_publish_tag(tag);
+	}
+	return retVal;
+}
+
+/**
+ * process I2C cyclic read update
+ * @return false if there was nothing to process, otherwise true
+ */
+bool i2c_read_process() {
+	int index = 0;
+	int tagIndex = 0;
+	int *tagArray;
+	bool retval = false;
+	time_t now = time(NULL);
+	time_t refTime;
+	while (updateCycles[index].ident >= 0) {
+		// ignore if cycle has no tags to process
+		if (updateCycles[index].tagArray == NULL) {
+			index++; continue;
+		}
+		// new reference time for each read cycle
+		refTime = time(NULL);		// used for group reads
+		if (now >= updateCycles[index].nextUpdateTime) {
+			// set next update cycle time
+			updateCycles[index].nextUpdateTime = now + updateCycles[index].interval;
+			// get array for tags
+			tagArray = updateCycles[index].tagArray;
+			// read each tag in the array
+			tagIndex = 0;
+			while (tagArray[tagIndex] >= 0) {
+				// if tag is not part of a group ....
+				//if (!modbus_read_multi_tags(tagArray, tagIndex, refTime))
+					// perform single tag read
+				i2c_read_tag(&i2cReadTags[tagArray[tagIndex]]);
+				tagIndex++;
+				//usleep(modbusinterslavedelay);
+			}
+			retval = true;
+			//cout << now << " Update Cycle: " << updateCycles[index].ident << " - " << updateCycles[index].tagArraySize << " tags" << endl;
+		}
+		index++;
+	}
+
+	return retval;
+}
+
+
 
 /**
  * assign tags to update cycles
@@ -587,7 +715,7 @@ bool i2c_assign_updatecycles () {
 }
 
 /**
- * read tag configuration for one PL device from config file
+ * read tag configuration for one I2C device from config file
  */
 bool i2c_config_tags(Setting& i2cTagsSettings, uint8_t deviceId) {
 	int tagIndex;
@@ -620,7 +748,8 @@ bool i2c_config_tags(Setting& i2cTagsSettings, uint8_t deviceId) {
 		// is topic present? -> read mqtt related parametrs
 		if (i2cTagsSettings[tagIndex].lookupValue("topic", strValue)) {
 			i2cReadTags[i2cTagCount].setTopic(strValue.c_str());
-			if (i2cTagsSettings[tagIndex].lookupValue("retain", bValue))
+			i2cReadTags[i2cTagCount].setPublishRetain(mqtt_retain_default);		// set to default
+			if (i2cTagsSettings[tagIndex].lookupValue("retain", bValue))		// override default if required
 				i2cReadTags[i2cTagCount].setPublishRetain(bValue);
 			if (i2cTagsSettings[tagIndex].lookupValue("format", strValue))
 				i2cReadTags[i2cTagCount].setFormat(strValue.c_str());
@@ -635,8 +764,8 @@ bool i2c_config_tags(Setting& i2cTagsSettings, uint8_t deviceId) {
 			if (i2cTagsSettings[tagIndex].lookupValue("noreadignore", intValue))
 				i2cReadTags[i2cTagCount].setNoreadIgnore(intValue);
 		}
-		//cout << "Tag " << plTagCount << " addr: " << tagAddress << " cycle: " << tagUpdateCycle;
-		//cout << " Topic: " << plReadTags[plTagCount].getTopicString() << endl;
+		cout << "Tag " << i2cTagCount << " addr: " << tagAddress << " cycle: " << tagUpdateCycle;
+		cout << " Topic: " << i2cReadTags[i2cTagCount].getTopicString() << endl;
 		i2cTagCount++;
 	}
 	return true;
@@ -709,8 +838,6 @@ bool i2c_config_devices(Setting& i2cDeviceSettings) {
 	return true;
 }
 
-
-
 /**
  * read update cycles from config file
  */
@@ -751,7 +878,7 @@ bool i2c_config_updatecycles(Setting& updateCyclesSettings) {
 
 
 /**
- * read PLxx configuration from config file
+ * read I2C configuration from config file
  */
 bool i2c_config() {
 	// Configure update cycles
@@ -768,7 +895,7 @@ bool i2c_config() {
 	}
 
 
-	// Configure pl devices
+	// Configure i2c devices
 	try {
 		Setting& i2cDeviceSettings = cfg.lookup("i2cdevices");
 		if (!i2c_config_devices(i2cDeviceSettings)) {
@@ -791,37 +918,61 @@ bool i2c_config() {
 
 
 /**
- * initialize PL interface device
+ * initialize I2C interface devices
  * @returns false for configuration error, otherwise true
  */
 bool i2c_init() {
-/*	string pl_device;
-	string strValue;
-	int pl_baud = 9600;
+    // sequence is important, the I2C setup also calls
+    // WiringPiSetupSys() which is required for pin IO functions
 
-	// check if mobus serial device is configured
-	if (!cfg_get_str("plxx.device", pl_device)) {
-		return true;
-	}
-	// get configuration serial device
-	if (!cfg_get_int("plxx.baudrate", pl_baud)) {
-			log(LOG_ERR, "plxx missing \"baudrate\" parameter for <%s>", pl_device.c_str());
-		return false;
-	}
+    // initialize environment temp sensor
+//	tmp_env.initialize();
 
-	// Create PL object
-	pl = new Plxx(pl_device.c_str(), pl_baudrate(pl_baud));
+    // initialize rack temp sensor
+    //tmp_rack.initialize();
 
-	if (pl == NULL) {
-		log(LOG_ERR, "Can't initialize PLxx on %s\n", pl_device.c_str());
-		return false;
-	}
+    // Power Management board ADC's
+/*    pwr_adc1.initialize();
+    if (!pwr_adc1.testConnection()) {
+        if (!runAsDaemon) {
+            printf("ADS1115 #1 on power management board not found \n");
+            // exit(0);
+        }
+    }
+    pwr_adc1.setGain(ADS1115_PGA_4P096);
+    if (!runAsDaemon) {
+        pwr_adc1.showConfigRegister();
+    }
+    pwr_adc2.initialize();
+    if (!pwr_adc2.testConnection()) {
+        if (!runAsDaemon) {
+            printf("ADS1115 #2 on power management board not found \n");
+            // exit(0);
+        }
+    }
+    pwr_adc2.setGain(ADS1115_PGA_4P096);
+    if (!runAsDaemon) {
+        pwr_adc2.showConfigRegister();
+	} */
 
-	log(LOG_INFO, "PL connection opened on port %s at %d baud", pl_device.c_str(), pl_baud);
+	// VI-Monitor board
+/*	visense_adc.initialize();
+
+    if (!visense_adc.testConnection()) {
+        if (!runAsDaemon) {
+            printf("ADS1115 not found \n");
+            // exit(0);
+        }
+    }
+    // set gain
+    visense_adc.setGain(ADS1115_PGA_4P096);
+    if (!runAsDaemon) {
+        visense_adc.showConfigRegister();
+    }
 */
+
 	if (!i2c_config()) return false;
 	if (!i2c_assign_updatecycles()) return false;
-
 	return true;
 }
 
@@ -1006,7 +1157,7 @@ int main (int argc, char *argv[])
 		goto exit_fail;
 	}
 
-	if (!init_tags()) goto exit_fail;
+	if (!mqtt_init_tags()) goto exit_fail;
 	if (!mqtt_init()) goto exit_fail;
 	if (!init_values()) goto exit_fail;
 	if (!i2c_init()) goto exit_fail;

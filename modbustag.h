@@ -36,18 +36,17 @@ public:
 	 * Notification for noread occurence
 	 */
 	void noreadNotify(void);
-	
+
 	/**
 	 * Get tag noread status
 	 */
 	bool isNoread(void);
-	 
+
 	/**
 	 * Is noreadignore exceeded
 	 */
 	bool noReadIgnoreExceeded(void);
-	
-	
+
 	/**
 	* Set the address
 	* @param address: the new address
@@ -107,7 +106,7 @@ public:
 	* @return updatecycle_id as int
 	*/
 	int updateCycleId(void);
-	
+
 	/**
 	* Get the topic string
 	* @return the topic string
@@ -162,7 +161,7 @@ public:
 	 */
 	void setIgnoreRetained(bool newValue);
 	bool getIgnoreRetained(void);
-	
+
 	/**
 	* Get the format string
 	* @return the format string
@@ -178,57 +177,57 @@ public:
 	* Set multiplier
 	*/
 	void setMultiplier(float);
-	
+
 	/**
 	* Set offset value
 	*/
 	void setOffset(float);
-	
+
 	/**
 	* Set noread value
 	*/
 	void setNoreadValue(float);
-	
+
 	/**
 	 * Get noread value
 	*/
 	float getNoreadValue(void);
-	
+
 	/**
 	* Set noread action
 	*/
 	void setNoreadAction(int);
-	
+
 	/**
 	 * Get noread action
 	*/
 	int getNoreadAction(void);
-	
+
 	/**
 	* Set noread ignore
 	*/
 	void setNoreadIgnore(int);
-	
+
 	/**
 	 * Get noread ignore
 	*/
 	int getNoreadIgnore(void);
-	
+
 	/**
 	 * Set data type
 	 */
 	bool setDataType(char);
-	
+
 	/**
 	 * Get data type
 	 */
 	char getDataType(void);
-	
+
 	/**
 	 * Set group
 	 */
 	void setGroup(int);
-	
+
 	/**
 	 * Get group
 	 */
@@ -238,23 +237,23 @@ public:
 	 * Set reference time
 	 */
 	void setReferenceTime(time_t);
-	
+
 	/**
 	 * Get reference time
 	 */
 	time_t getReferenceTime(void);
-	
+
 	/**
 	 * Set write pending
 	 * to indicate that value needs to be written to the slave
 	 */
 	void setWritePending(bool);
-	
+
 	/**
 	 * Get write pending
 	 */
 	bool getWritePending(void);
-	
+
 	// public members used to store data which is not used inside this class
 	//int readInterval;                   // seconds between reads
 	//time_t nextReadTime;                // next scheduled read

@@ -171,13 +171,12 @@ public:
      * Set tag type (see tag_type_t)
      */
     void setType(tag_type_t newType);
-    
+
     /**
      * Get tag type (see tag_type_t)
      */
     tag_type_t type(void);
-    
-    
+
     // public members used to store data which is not used inside this class
     int readInterval;                   // seconds between reads
     time_t nextReadTime;                // next scheduled read

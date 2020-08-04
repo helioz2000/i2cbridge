@@ -95,9 +95,9 @@ static void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_cou
  * GLOBAL FUNCTIONS
  *********************/
 
-/*********************
- * MEMBER FUNCTIONS
- *********************/
+ /*********************
+  * MEMBER FUNCTIONS
+  *********************/
 
  //
  // Class MQTT
@@ -171,7 +171,7 @@ void MQTT::connect(void) {
     // connect to mqtt server
     int result = mosquitto_connect_async(_mosq, _mqttBroker.c_str(), _mqttPort, _mqttKeepalive);
     if (result != MOSQ_ERR_SUCCESS) {
-        sprintf(strbuf, "%s - mosquitto_connect failed: %s [%d]\n", __func__, strerror(result), result);
+        sprintf(strbuf, "%s %s - mosquitto_connect failed: %s [%d]\n", __FILE__, __func__, strerror(result), result);
         syslog(LOG_ERR, "mosquitto_connect failed: %s [%d]", strerror(result), result);
         throw runtime_error(strbuf);
     }
@@ -195,7 +195,7 @@ void MQTT::registerTopicUpdateCallback(void (*callback) (const struct mosquitto_
 int MQTT::publish(const char* topic, const char* format, float value, bool pubRetain) {
     int messageid = 0;
     if (!_connected) {
-        fprintf(stderr, "%s: Not Connected!\n", __func__);
+        fprintf(stderr, "%s %s: Not Connected!\n", __FILE__, __func__);
         return -1;
     } else {
         //printf ("%s: %s\n", __func__, topic);
@@ -204,7 +204,7 @@ int MQTT::publish(const char* topic, const char* format, float value, bool pubRe
     //printf ("%s: %s %s\n", __func__, topic, _pub_buf);
     int result = mosquitto_publish(_mosq, &messageid, topic, strlen(_pub_buf), (const char *) _pub_buf, _qos, pubRetain);
     if (result != MOSQ_ERR_SUCCESS) {
-        fprintf(stderr, "%s: %s [%s]\n", __func__, mosquitto_strerror(result), topic);
+        fprintf(stderr, "%s %s: %s [%s]\n", __FILE__, __func__, mosquitto_strerror(result), topic);
     }
     return messageid;
 }
@@ -212,7 +212,7 @@ int MQTT::publish(const char* topic, const char* format, float value, bool pubRe
 int MQTT::clear_retained_message(const char* topic) {
     int messageid = 0;
     if (!_connected) {
-        fprintf(stderr, "%s: Not Connected!\n", __func__);
+        fprintf(stderr, "%s %s: Not Connected!\n", __FILE__, __func__);
         return -1;
     } else {
         //printf ("%s: %s\n", __func__, topic);
@@ -221,7 +221,7 @@ int MQTT::clear_retained_message(const char* topic) {
 	// mosquitto's persistance store
     int result = mosquitto_publish(_mosq, &messageid, topic, 0, "", _qos, true);
     if (result != MOSQ_ERR_SUCCESS) {
-        fprintf(stderr, "%s: %s [%s]\n", __func__, mosquitto_strerror(result), topic);
+        fprintf(stderr, "%s %s: %s [%s]\n", __FILE__, __func__, mosquitto_strerror(result), topic);
     }
     return messageid;
 }
@@ -230,9 +230,11 @@ int MQTT::subscribe(const char *topic) {
     int messageid = 0;
     int result = mosquitto_subscribe(_mosq, &messageid, topic, _qos);
     if (result != MOSQ_ERR_SUCCESS) {
-        fprintf(stderr, "%s: %s [%s]\n", __func__, mosquitto_strerror(result), topic);
+        fprintf(stderr, "%s %s: %s [%s]\n", __FILE__, __func__, mosquitto_strerror(result), topic);
     } else {
-        //printf ("%s: %s\n", __func__, topic);
+		if(_console_log_enable) {
+			printf ("%s %s: %s\n", __FILE__, __func__, topic);
+		}
     }
     return messageid;
 }
@@ -241,9 +243,13 @@ int MQTT::unsubscribe(const char *topic) {
     int messageid = 0;
     int result = mosquitto_unsubscribe(_mosq, &messageid, topic);
     if (result != MOSQ_ERR_SUCCESS) {
-        syslog(LOG_ERR, "%s [%s]", mosquitto_strerror(result), topic);
-        fprintf(stderr, "%s: %s [%s]\n", __func__, mosquitto_strerror(result), topic);
-    }
+        syslog(LOG_ERR, "%s %s [%s]", __FILE__, mosquitto_strerror(result), topic);
+        fprintf(stderr, "%s %s: %s [%s]\n", __FILE__, __func__, mosquitto_strerror(result), topic);
+    } else {
+		if(_console_log_enable) {
+			printf ("%s %s: %s\n", __FILE__, __func__, topic);
+		}
+	}
     return messageid;
 }
 
@@ -283,47 +289,52 @@ bool MQTT::getRetain(void) {
 
 void MQTT::message_callback(struct mosquitto *m, const struct mosquitto_message *message) {
 	//fprintf(stderr, "%s:\n", __func__);
-	/*
-	if(message->payloadlen){
-		fprintf(stderr, "%s %s\n", message->topic, (const char *)message->payload);
-	}else{
-		fprintf(stderr, "%s (null)\n", message->topic);
+	if (_console_log_enable) {
+		if(message->payloadlen){
+			fprintf(stderr, "%s %s - %s %s\n", __FILE__, __func__, message->topic, (const char *)message->payload);
+		} else {
+			fprintf(stderr, "%s %s - %s (null)\n", __FILE__, __func__, message->topic);
+		}
 	}
-	*/
+
 	if (topicUpdateCallback != NULL) {
 		(*topicUpdateCallback) (message);
-		//fprintf(stderr, "%s - topicUpdateCallback done %s\n", __func__, message->topic);
+		//fprintf(stderr, "%s %s - topicUpdateCallback done %s\n", __FILE__, __func__, message->topic);
 	}
 //	else {
-//		fprintf(stderr, "%s - topicUpdateCallback is NULL\n", __func__);
+//		fprintf(stderr, "%s %s - topicUpdateCallback is NULL\n", __FILE__, __func__);
 //	}
 }
 
 void MQTT::log_callback(struct mosquitto *m, int level, const char *str) {
     /* Print all log messages regardless of level. */
     if (_console_log_enable) {
-        fprintf(stderr, "%s [%d]: %s\n",__func__ , level, str);
+        fprintf(stderr, "%s %s [%d]: %s\n", __FILE__,__func__ , level, str);
     }
 }
 
 void MQTT::subscribe_callback(struct mosquitto *m, int mid, int qos_count, const int *granted_qos) {
-    //printf("%s: mid:%d qos_count:%d\n", __func__, mid, qos_count);
+	if (_console_log_enable) {
+		printf("%s %s: mid:%d qos_count:%d\n", __FILE__, __func__, mid, qos_count);
+	}
 }
 
 void MQTT::publish_callback(struct mosquitto *m, int mid) {
-    //fprintf(stderr, "%s: %d\n", __func__, mid );
+	if (_console_log_enable) {
+		fprintf(stderr, "%s %s: %d\n", __FILE__, __func__, mid );
+	}
 }
 
 void MQTT::connect_callback(struct mosquitto *m, int result) {
-	//printf("%s: %s\n", __func__ , mosquitto_connack_string(result) );
+     //printf("%s: %s\n", __func__ , mosquitto_connack_string(result) );
      if (result == MOSQ_ERR_SUCCESS) {
          _connected = true;
          if (_console_log_enable) {
-             printf("%s: connection success\n", __func__);
+             printf("%s %s: connection success\n", __FILE__, __func__);
          }
      } else {
-         syslog(LOG_ERR, "%s", mosquitto_connack_string(result));
-         fprintf(stderr, "%s: %s\n", __func__ , mosquitto_connack_string(result) );
+         syslog(LOG_ERR, "%s %s", __FILE__, mosquitto_connack_string(result));
+         fprintf(stderr, "%s %s: %s\n", __FILE__, __func__ , mosquitto_connack_string(result) );
      }
      if (connectionStatusCallback != NULL) {
          (*connectionStatusCallback) (_connected);
@@ -331,18 +342,14 @@ void MQTT::connect_callback(struct mosquitto *m, int result) {
 }
 
 void MQTT::disconnect_callback(struct mosquitto *m, int rc) {
-	if (_console_log_enable) {
-		printf("%s: rc: %d (%s)\n", __func__, rc, mosquitto_strerror(rc) );
-	}
+	_connected = false;
 	if (rc != 0) {
-		syslog(LOG_ERR, "%s", mosquitto_strerror(rc) );
-		fprintf(stderr, "%s: %s\n", __func__, mosquitto_strerror(rc) );
-	} else {
+		syslog(LOG_ERR, "%s %s", __FILE__, mosquitto_strerror(rc));
 		if (_console_log_enable) {
-			printf("%s: rc: %d (%s)\n", __func__, rc , mosquitto_strerror(rc));
+			fprintf(stderr, "%s %s: %s\n", __FILE__, __func__, mosquitto_strerror(rc) );
 		}
 	}
-	_connected = false;
+	//fprintf(stderr, "%s: %s\n", __func__, mosquitto_strerror(rc) );
 	if (connectionStatusCallback != NULL) {
 		(*connectionStatusCallback) (_connected);
 	}
