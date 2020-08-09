@@ -39,8 +39,9 @@
 #include "modbustag.h"
 #include "hardware.h"
 #include "i2cbridge.h"
-#include "hardware/ADS1115.h"
+#include "hardware/vimon.h"
 #include "hardware/MCP9808.h"
+#include "hardware/ADS1115.h"
 
 using namespace std;
 using namespace libconfig;
@@ -101,6 +102,9 @@ TagStore ts;
 MQTT mqtt(MQTT_CLIENT_ID);
 Config cfg;			// config file
 Hardware hw(false);	// no screen
+
+// VI montoring board
+VImon vimon;
 
 // ADCs
 //ADS1115 pwr_adc1(ADS1115_ADDRESS_ADDR_GND);	// ADC on power management board
@@ -584,23 +588,42 @@ bool i2c_read_tag(ModbusTag *tag) {
 	uint16_t registers[4];
 	bool retVal = true;
 	float readValue;
+	int readResult = 0;
 
 	uint8_t slaveId = tag->getSlaveId();
 
 	//printf("%s %s - %s\n", __FILE__, __func__, tag->getTopic());
 
 	switch(tag->getAddress()) {
-		case 1:
-			tag->setRawValue(uint16_t(tmp_env.readTempC() * 10.0));
-			break;
 		case 101:
-			tag->setRawValue(uint16_t(hw.read_cpu_temp() * 10.0));
+			readValue = tmp_env.readTempC() * 10.0;
+			break;
+		case 301:
+			readValue = hw.read_cpu_temp() * 10.0;
+			break;
+		case 401:		// vimon battery voltage
+			readResult = vimon.getMilliVolts(0, &readValue);
+			break;
+		case 402:		// vimon battery current
+			readResult = vimon.getMilliAmps(2, &readValue);
+			break;
+		case 403:		// vimon battery temperature
+			readResult = vimon.getPT100temp(&readValue);
+			//printf("%s - temp: %.2f\n", __func__, readValue);
+			readValue *= 100.0;
 			break;
 		default:
 			printf("%s %s - unknown address %d\n", __FILE__, __func__, tag->getAddress());
 			retVal = false;
 			break;
 	}
+
+	if (readResult == 0) {
+		tag->setRawValue(uint16_t(readValue));
+	} else {
+		printf("%s %s - read error on tag address %d\n", __FILE__, __func__, tag->getAddress());
+	}
+
 	if (retVal) {
 		mqtt_publish_tag(tag);
 	}
@@ -956,6 +979,10 @@ bool i2c_init() {
 	} */
 
 	// VI-Monitor board
+	if (!vimon.initialize( ADS1115_ADDRESS_ADDR_SDA )) {
+		return false;
+	}
+
 /*	visense_adc.initialize();
 
     if (!visense_adc.testConnection()) {

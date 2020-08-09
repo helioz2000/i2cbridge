@@ -19,6 +19,7 @@ CFLAGS = -g -Wall -Wno-unused -Wno-unknown-pragmas
 LIBS = -lwiringPi -lwiringPiDev -lpthread -lstdc++ -lm -lmosquitto -lconfig++
 
 OBJDIR = ./obj
+HWDIR = hardware/
 
 .PHONY: default all celan
 
@@ -27,9 +28,9 @@ all: default
 #VPATH = aprs
 
 CSRCS += $(wildcard *.c)
-CSRCS += $(wildcard hardware/*.c)
+CSRCS += $(wildcard $(HWDIR)*.c)
 CPPSRCS += $(wildcard *.cpp)
-CPPSRCS += $(wildcard hardware/*.cpp)
+CPPSRCS += $(wildcard $(HWDIR)*.cpp)
 
 COBJS = $(patsubst %.c,$(OBJDIR)/%.o,$(CSRCS))
 CPPOBJS = $(patsubst %.cpp,$(OBJDIR)/%.o,$(CPPSRCS))
@@ -53,6 +54,14 @@ $(OBJDIR)/%.o: %.cpp
 	@mkdir -p $(OBJDIR)
 	@echo "CXX $<"
 	@$(CXX) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR)/$(HWDIR)vimon.o: $(HWDIR)vimon_cal.h $(HWDIR)vimon.h
+$(OBJDIR)/$(HWDIR)MCP9808.o: $(HWDIR)MCP9808.h
+$(OBJDIR)/modbustag.o: modbustag.h
+$(OBJDIR)/hardware.o: hardware.h
+$(OBJDIR)/datatag.o: datatag.h
+$(OBJDIR)/mqtt.o: mqtt.h
+$(OBJDIR)/i2cbridge.o: i2cbridge.h
 
 default: $(OBJS)
 	$(CC) $(OBJS) $(MODULES) $(LDFLAGS) $(LIBS) -o $(TARGET)
