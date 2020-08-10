@@ -619,7 +619,7 @@ bool i2c_read_tag(ModbusTag *tag) {
 	}
 
 	if (readResult == 0) {
-		tag->setRawValue(uint16_t(readValue));
+		tag->setRawValue(int16_t(readValue));
 	} else {
 		printf("%s %s - read error on tag address %d\n", __FILE__, __func__, tag->getAddress());
 	}

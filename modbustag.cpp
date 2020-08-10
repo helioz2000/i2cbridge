@@ -143,14 +143,14 @@ const char* ModbusTag::getFormat(void) {
 	return _format.c_str();
 }
 
-void ModbusTag::setRawValue(uint16_t uintValue) {
+void ModbusTag::setRawValue(int16_t intValue) {
 	switch(_dataType) {
 		case 'r':
-			_rawValue = uintValue;
+			_rawValue = intValue;
 			break;
 		case 'i':
 		case 'q':
-			if (uintValue > 0) _rawValue = 1;
+			if (intValue > 0) _rawValue = 1;
 			else _rawValue = 0;
 			break;
 	}
@@ -158,7 +158,7 @@ void ModbusTag::setRawValue(uint16_t uintValue) {
 	_noreadcount = 0;
 }
 
-uint16_t ModbusTag::getRawValue(void) {
+int16_t ModbusTag::getRawValue(void) {
 	return _rawValue;
 }
 

@@ -75,13 +75,13 @@ public:
 	* Set the value
 	* @param uintValue: the new value
 	*/
-	void setRawValue(uint16_t uintValue);
+	void setRawValue(int16_t intValue);
 
 	/**
 	* Get value
 	* @return value as uint
 	*/
-	uint16_t getRawValue(void);
+	int16_t getRawValue(void);
 
 	/**
 	* Get value as bool
@@ -278,7 +278,7 @@ private:
 	uint8_t	_slaveId;				// modbus address of slave
 	uint16_t _address;				// the address of the modbus tag in the slave
 	int	_group;						// group tags for single read
-	uint16_t _rawValue;				// the value of this modbus tag
+	int16_t _rawValue;				// the value of this modbus tag
 	int _updatecycle_id;			// update cycle identifier
 	time_t _lastUpdateTime;			// last update time (change of value)
 	char _dataType;					// i = input, q = output, r = register
