@@ -186,6 +186,22 @@ int VImon::getMilliAmps(int channel, float *value, bool useRaw) {
 	return 0;
 }
 
+int VImon::getBipolarMilliAmps(float *value, bool useRaw) {
+	float mVunscaled, i1, i2;
+	// read both current channels
+	if (getUnscaledMilliVolts(2, &mVunscaled, useRaw) < 0) return -1;
+	i1 = mVunscaled * I1_MA_PER_MV;
+	if (getUnscaledMilliVolts(3, &mVunscaled, useRaw) < 0) return -1;
+	i2 = mVunscaled * I2_MA_PER_MV;
+	// positive value on i1 (charging)
+	if (i1 > i2) {
+		*value = i1;
+	} else {
+		*value = 0.0 - i2;
+	}
+	return 0;
+}
+
 void VImon::readAllChannels(std::string& retStr, bool useRaw) {
 	float mVunscaled;
 	float voltage_mv;

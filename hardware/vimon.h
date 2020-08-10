@@ -63,7 +63,7 @@ public:
 	int getUnscaledMilliVolts(int channel, float *value, bool useRaw =0);
 	int getMilliVolts(int channel, float *value, bool useRaw =0);
 	int getMilliAmps(int channel, float *value, bool useRaw =0);
-
+	int getBipolarMilliAmps(float *value, bool useRaw =0);
 /*
  PT100 is optional and replaces Voltage 2
  - connected on CH 1

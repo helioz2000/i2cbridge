@@ -605,7 +605,7 @@ bool i2c_read_tag(ModbusTag *tag) {
 			readResult = vimon.getMilliVolts(0, &readValue);
 			break;
 		case 402:		// vimon battery current
-			readResult = vimon.getMilliAmps(2, &readValue);
+			readResult = vimon.getBipolarMilliAmps(&readValue);
 			break;
 		case 403:		// vimon battery temperature
 			readResult = vimon.getPT100temp(&readValue);

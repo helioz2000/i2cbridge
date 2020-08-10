@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStartPre=/bin/sleep 2
+ExecStartPre=/bin/sleep 5
 ExecStart=/usr/local/sbin/i2cbridge -c/etc/i2cbridge.cfg
 WorkingDirectory=/root
 Restart=no
