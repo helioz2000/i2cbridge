@@ -8,7 +8,7 @@ ExecStartPre=/bin/sleep 30
 ExecStart=/usr/local/sbin/i2cbridge -c/etc/i2cbridge.cfg
 WorkingDirectory=/root
 Restart=no
-RestartSec=30
+RestartSec=20
 User=root
 
 [Install]
