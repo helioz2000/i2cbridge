@@ -34,7 +34,7 @@
 #include <libconfig.h++>
 #include <mosquitto.h>
 
-#include "datatag.h"
+//#include "i2ctag.h"
 #include "mqtt.h"
 #include "modbustag.h"
 #include "hardware.h"
@@ -76,7 +76,8 @@ bool mqtt_retain_default = false;
 
 useconds_t mainloopinterval = 250;	// milli seconds
 struct timespec lastAccTime;		// last accumulation run
-double accPwr;						// power readout accumulator
+double accPwr;						// power readout accumulator (reset)
+double accPwrCount;					// power accumulator (no reset)
 updatecycle *updateCycles = NULL;	// array of update cycle definitions
 ModbusTag *i2cReadTags = NULL;		// array of all PL read tags
 
@@ -100,7 +101,7 @@ bool i2c_read_process();
 bool mqtt_publish_tag(ModbusTag *tag);
 void mqtt_clear_tags(bool publish_noread, bool clear_retain);
 
-TagStore ts;
+//TagStore ts;
 MQTT mqtt(MQTT_CLIENT_ID);
 Config cfg;			// config file
 Hardware hw(false);	// no screen
@@ -266,6 +267,7 @@ bool getReading(int address, float *value) {
  * publishing the value to MQTT broker
  * @returns true if one or more variable(s) were processed
  */
+/*
 bool var_process(void) {
     bool retval = false;
     time_t now = time(NULL);
@@ -290,6 +292,7 @@ bool var_process(void) {
 	}
     return retval;
 }
+*/
 
 /**
  * Process all variables
@@ -331,9 +334,10 @@ bool processAccumulators () {
 	// tiem since last measurement
 	elapsedseconds = (double)elapsedtime.tv_sec + (double)elapsedtime.tv_nsec * 1.0e-9;
 	Ws = (W / 3600) * elapsedseconds;
-	// add mWs to accumulator
+	// add Ws to accumulator
 	accPwr += Ws;
-//	printf("%s - %f %f\n", __func__, accPwr, Ws);
+	accPwrCount += Ws;
+//	printf("%s - %f %f %f\n", __func__, accPwr, accPwrCount, Ws);
 	return true;
 }
 
@@ -361,6 +365,7 @@ bool init_values(void)
  *Initialise hardware tags
  * @return false on failure
  */
+/*
 bool init_hwtags(void)
 {
 
@@ -383,6 +388,7 @@ bool init_hwtags(void)
 	}
 	return true;
 }
+*/
 
 /** Initialise the tag database (tagstore)
  * @return false on failure
@@ -393,7 +399,7 @@ bool mqtt_init_tags(void) {
 //	int numTags, iVal, i;
 //	bool bVal;
 
-	if (!init_hwtags()) return false;
+//	if (!init_hwtags()) return false;
 	if (!cfg.exists("mqtt_tags")) {	// optional
 		log(LOG_NOTICE,"configuration - parameter \"mqtt_tags\" does not exist");
 		return true;
@@ -661,6 +667,9 @@ bool i2c_read_tag(ModbusTag *tag) {
 			readValue = accPwr * 36000.0;
 			//readValue = accPwr * tag->getMultiplier();
 			accPwr = 0;	// clear accumulator
+			break;
+		case 1002:
+			readValue = accPwrCount;
 			break;
 		default:
 			printf("%s %s - unknown address %d\n", __FILE__, __func__, tag->getAddress());
@@ -1119,6 +1128,7 @@ void main_loop()
 	clock_gettime(CLOCK_MONOTONIC, &lastAccTime);
 	// reset accumulator values
 	accPwr = 0;
+	accPwrCount = 0;
 
 	// first call takes a long time (10ms)
 	while (!exitSignal) {
