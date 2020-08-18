@@ -33,7 +33,7 @@
 // Ohm to PT100 temp conversion
 #define PT_REFERENCE_OHM 100.0	// Ohm (100 for PT100)
 #define PT_SLOPE 0.003851		// PT slope factor
-#define PT_OFFSET_TEMP -1.8		// Compensation for low quality PT100
+#define PT_OFFSET_TEMP 0.0		// Compensation for low quality PT100
 
 // Current measurement CH 3
 #define I1_MA_PER_MV 50		// mA

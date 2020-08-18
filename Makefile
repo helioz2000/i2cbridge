@@ -101,7 +101,7 @@ service:
 ifneq ($(shell id -u), 0)
 	@echo "!!!! service requires root !!!!"
 else
-	install -o root $(SERVICE) $(SERVICEDIR)
+	install -m 644 -o root $(SERVICE) $(SERVICEDIR)
 	@systemctl daemon-reload
 	@systemctl enable $(SERVICE)
 	@echo $(TARGET) is now available as systemd service

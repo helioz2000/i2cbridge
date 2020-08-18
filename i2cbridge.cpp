@@ -63,26 +63,26 @@ const int version_minor = 0;
 static string cpu_temp_topic = "";
 static string cfgFileName;
 static string processName;
-//static string mbSlaveStatusTopic;
 bool exitSignal = false;
 bool debugEnabled = false;
-int i2cDebugLevel = 1;
-bool mqttDebugEnabled = false;
 bool runningAsDaemon = false;
+char *info_label_text;
+
+bool mqttDebugEnabled = false;
 time_t mqtt_connect_time = 0;			// time the connection was initiated
 time_t mqtt_next_connect_time = 0;		// time when next connect is scheduled
 bool mqtt_connection_in_progress = false;
 bool mqtt_retain_default = false;
-char *info_label_text;
-useconds_t mainloopinterval = 250;   // milli seconds
-//extern void cpuTempUpdate(int x, Tag* t);
-//extern void roomTempUpdate(int x, Tag* t);
+
+useconds_t mainloopinterval = 250;	// milli seconds
+struct timespec lastAccTime;		// last accumulation run
+double accPwr;						// power readout accumulator
 updatecycle *updateCycles = NULL;	// array of update cycle definitions
 ModbusTag *i2cReadTags = NULL;		// array of all PL read tags
-//ModbusTag *plWriteTags = NULL;		// array of all PL write tags
+
+int i2cDebugLevel = 1;
 int i2cTagCount = -1;
 uint32_t i2cTransactionDelay = 0;	// delay between modbus transactions
-//int mbMaxRetries = 0;				// number of retries on modbus error (config file)
 #define I2C_DEVICEID_MAX 254		// highest permitted I2C device ID
 #define I2C_DEVICEID_MIN 1			// lowest permitted I2C device ID
 
@@ -166,6 +166,11 @@ void timespec_diff(struct timespec *start, struct timespec *stop, struct timespe
 	result->tv_nsec = stop->tv_nsec - start->tv_nsec;
 	}
 	return;
+}
+
+void timespec_set(struct timespec *src, struct timespec *dst) {
+	dst->tv_nsec = src->tv_nsec;
+	dst->tv_sec = src->tv_sec;
 }
 
 #pragma mark -- Config File functions
@@ -302,9 +307,38 @@ bool process() {
 	return retval;
 }
 
+/** Process accumulator values
+ * called at regulat intervals to integrate accumulator values
+ * @param
+ * @return true on success
+ */
+bool processAccumulators () {
+	int readResult;
+	float milliVolts, milliAmps;
+	double Ws, W, elapsedseconds;
+	struct timespec thistime, elapsedtime;
+
+	// read Voltage and Current
+	readResult = vimon.getMilliVolts(0, &milliVolts);
+	if (readResult != 0) return false;
+	readResult = vimon.getBipolarMilliAmps(&milliAmps);
+	if (readResult != 0) return false;
+	// calculate time since last call
+	clock_gettime(CLOCK_MONOTONIC, &thistime);
+	timespec_diff(&lastAccTime, &thistime, &elapsedtime);
+	timespec_set(&thistime, &lastAccTime);		// update lassAccTime
+	W = (milliVolts * milliAmps) * 1.0e-6;		// Watts
+	// tiem since last measurement
+	elapsedseconds = (double)elapsedtime.tv_sec + (double)elapsedtime.tv_nsec * 1.0e-9;
+	Ws = (W / 3600) * elapsedseconds;
+	// add mWs to accumulator
+	accPwr += Ws;
+//	printf("%s - %f %f\n", __func__, accPwr, Ws);
+	return true;
+}
+
 bool init_values(void)
 {
-
 	char info1[80], info2[80], info3[80], info4[80];
 
     // get hardware info
@@ -498,7 +532,9 @@ void mqtt_topic_update(const struct mosquitto_message *message) {
 		fprintf(stderr, "%s: <%s> not  in ts\n", __func__, message->topic);
 	} else {
 		tp->setValueIsRetained(message->retain);
-		tp->setValue((const char*)message->payload);	// This will trigger a callback to modbus_write_request
+		if (message->payload != NULL) {
+			tp->setValue((const char*)message->payload);	// This will trigger a callback to modbus_write_request
+		}
 	}*/
 }
 
@@ -620,6 +656,11 @@ bool i2c_read_tag(ModbusTag *tag) {
 			readResult = vimon.getPT100temp(&readValue);
 			//printf("%s - temp: %.2f\n", __func__, readValue);
 			readValue *= 100.0;
+			break;
+		case 1001:		// Power accumulator
+			readValue = accPwr * 36000.0;
+			//readValue = accPwr * tag->getMultiplier();
+			accPwr = 0;	// clear accumulator
 			break;
 		default:
 			printf("%s %s - unknown address %d\n", __FILE__, __func__, tag->getAddress());
@@ -1074,10 +1115,16 @@ void main_loop()
 	useconds_t min_time = 99999999, max_time = 0;
 	useconds_t interval = mainloopinterval * 1000;	// convert ms to us
 
+	// intiate accumulator timing
+	clock_gettime(CLOCK_MONOTONIC, &lastAccTime);
+	// reset accumulator values
+	accPwr = 0;
+
 	// first call takes a long time (10ms)
 	while (!exitSignal) {
 	// run processing and record start/stop time
 		clock_gettime(CLOCK_MONOTONIC, &starttime);
+		processAccumulators();
 		processing_success = process();
 		clock_gettime(CLOCK_MONOTONIC, &endtime);
 		// calculate cpu time used [us]

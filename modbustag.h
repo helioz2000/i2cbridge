@@ -179,6 +179,11 @@ public:
 	void setMultiplier(float);
 
 	/**
+	* Get multiplier
+	*/
+	float getMultiplier(void);
+
+	/**
 	* Set offset value
 	*/
 	void setOffset(float);

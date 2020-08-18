@@ -179,6 +179,10 @@ void ModbusTag::setMultiplier(float newMultiplier) {
 	_multiplier = newMultiplier;
 }
 
+float ModbusTag::getMultiplier(void) {
+	return _multiplier;
+}
+
 void ModbusTag::setOffset(float newOffset) {
 	_offset = newOffset;
 }
