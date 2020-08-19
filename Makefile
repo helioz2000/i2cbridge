@@ -13,7 +13,12 @@ SERVICEDIR = /etc/systemd/system
 # - Compiler
 CC=gcc
 CXX=g++
-CFLAGS = -g -Wall -Wno-unused -Wno-unknown-pragmas
+CFLAGS = -Wall -Wno-unused -Wno-unknown-pragmas
+
+# Release:
+CFLAGS += -O3
+# Debug:
+#CFLAGS += -Og
 
 # - Linker
 LIBS = -lwiringPi -lwiringPiDev -lpthread -lstdc++ -lm -lmosquitto -lconfig++
@@ -55,13 +60,14 @@ $(OBJDIR)/%.o: %.cpp
 	@echo "CXX $<"
 	@$(CXX) $(CFLAGS) -c $< -o $@
 
+# Dependencies
 $(OBJDIR)/$(HWDIR)vimon.o: $(HWDIR)vimon_cal.h $(HWDIR)vimon.h
 $(OBJDIR)/$(HWDIR)MCP9808.o: $(HWDIR)MCP9808.h
-$(OBJDIR)/modbustag.o: modbustag.h
+$(OBJDIR)/$(HWDIR)ADS1115.o: $(HWDIR)ADS1115.h
 $(OBJDIR)/hardware.o: hardware.h
-$(OBJDIR)/datatag.o: datatag.h
+$(OBJDIR)/i2ctag.o: i2ctag.h
 $(OBJDIR)/mqtt.o: mqtt.h
-$(OBJDIR)/i2cbridge.o: i2cbridge.h
+$(OBJDIR)/i2cbridge.o: i2cbridge.h hardware.h i2ctag.h mqtt.h $(HWDIR)vimon.h $(HWDIR)MCP9808.h $(HWDIR)ADS1115.h
 
 default: $(OBJS)
 	$(CC) $(OBJS) $(MODULES) $(LDFLAGS) $(LIBS) -o $(TARGET)

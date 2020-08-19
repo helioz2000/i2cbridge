@@ -1,36 +1,36 @@
 /**
- * @file modbustag.h
+ * @file i2ctag.h
 -----------------------------------------------------------------------------
- Class "ModbusTag" encapsulates a single Modbus Tag unit
+ Class encapsulates a single I2C Tag unit
  
 -----------------------------------------------------------------------------
 */
 
-#ifndef _MODBUSTAG_H_
-#define _MODBUSTAG_H_
+#ifndef _I2CTAG_H_
+#define _I2CTAG_H_
 
 #include <stdint.h>
 
 #include <iostream>
 #include <string>
 
-class ModbusTag {
+class I2Ctag {
 public:
     /**
      * Empty constructor
      */
-    ModbusTag();
+    I2Ctag();
 
     /**
      * Constructor
      * @param topic: tag topic
      */
-    ModbusTag(const uint16_t addr);
+    I2Ctag(const uint16_t addr);
 
     /**
      * Destructor
      */
-    ~ModbusTag();
+    ~I2Ctag();
 
 	/**
 	 * Notification for noread occurence
@@ -51,7 +51,7 @@ public:
 	* Set the address
 	* @param address: the new address
 	*/
-	void setAddress(int newAddress);
+	void setAddress(const uint16_t newAddress);
 
 	/**
 	* Get the tag address string
@@ -71,17 +71,24 @@ public:
 	*/
 	uint8_t getSlaveId(void);
 
+
+
 	/**
 	* Set the value
 	* @param uintValue: the new value
 	*/
-	void setRawValue(int16_t intValue);
+//	void setRawValue(int16_t intValue);
 
 	/**
-	* Get value
+	* Get unscaled value
 	* @return value as uint
 	*/
-	int16_t getRawValue(void);
+	double getValue(void);
+
+	/**
+	* Set value
+	*/
+	void setValue(double newValue);
 
 	/**
 	* Get value as bool
@@ -221,43 +228,33 @@ public:
 	/**
 	 * Set data type
 	 */
-	bool setDataType(char);
+//	bool setDataType(char);
 
 	/**
 	 * Get data type
 	 */
-	char getDataType(void);
+//	char getDataType(void);
 
 	/**
 	 * Set group
 	 */
-	void setGroup(int);
+//	void setGroup(int);
 
 	/**
 	 * Get group
 	 */
-	int getGroup(void);
-
-	/**
-	 * Set reference time
-	 */
-	void setReferenceTime(time_t);
-
-	/**
-	 * Get reference time
-	 */
-	time_t getReferenceTime(void);
+//	int getGroup(void);
 
 	/**
 	 * Set write pending
 	 * to indicate that value needs to be written to the slave
 	 */
-	void setWritePending(bool);
+//	void setWritePending(bool);
 
 	/**
 	 * Get write pending
 	 */
-	bool getWritePending(void);
+//	bool getWritePending(void);
 
 	// public members used to store data which is not used inside this class
 	//int readInterval;                   // seconds between reads
@@ -271,8 +268,8 @@ private:
 	std::string _topic;				// storage for topic path
 	std::string _format;			// storage for publish format
 	bool _publish_retain;           // publish with or without retain
-	bool _write;					// true for write tag, false for read tag
-	bool _writePending;				// value needs to be written to slave
+//	bool _write;					// true for write tag, false for read tag
+//	bool _writePending;				// value needs to be written to slave
 	bool _ignoreRetained;			// do not write retained value to slave
 	float _multiplier;				// multiplier for scaled value
 	float _offset;					// offset for scaled value
@@ -282,15 +279,15 @@ private:
 	int _noreadcount;				// noread counter
 	uint8_t	_slaveId;				// modbus address of slave
 	uint16_t _address;				// the address of the modbus tag in the slave
-	int	_group;						// group tags for single read
-	int16_t _rawValue;				// the value of this modbus tag
+//	int	_group;						// group tags for single read
+//	int16_t _rawValue;				// the value of this modbus tag
+	double _value;					// the value of this tag
 	int _updatecycle_id;			// update cycle identifier
 	time_t _lastUpdateTime;			// last update time (change of value)
-	char _dataType;					// i = input, q = output, r = register
-	time_t _referenceTime;			// time to be used externally only
-	
+//	char _dataType;					// i = input, q = output, r = register
+
 };
 
 
 
-#endif /* _MODBUSTAG_H_ */
+#endif /* _I2CTAG_H_ */

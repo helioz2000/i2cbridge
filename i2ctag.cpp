@@ -17,7 +17,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include "modbustag.h"
+#include "i2ctag.h"
 
 #include <stdexcept>
 #include <iostream>
@@ -40,12 +40,10 @@ using namespace std;
 // Class Tag
 //
 
-ModbusTag::ModbusTag() {
+I2Ctag::I2Ctag() {
 	this->_address = 0;
-	this->_group = 0;
 	this->_topic = "";
 	this->_slaveId = 0;
-	this->_rawValue = 0;
 	this->_multiplier = 1.0;
 	this->_offset = 0.0;
 	this->_format = "%f";
@@ -53,97 +51,105 @@ ModbusTag::ModbusTag() {
 	this->_noreadaction = -1;	// do nothing
 	this->_noreadignore = 0;
 	this->_noreadcount = 0;
-	this->_writePending = false;
 	this->_ignoreRetained = false;
-	this->_dataType = 'r';
-	this->_referenceTime = 0;
+	this->_value = 0.0;
+//	this->_dataType = 'r';
 	//printf("%s - constructor %d %s\\", __func__, this->_slaveId, this->_topic.c_str());
 	//throw runtime_error("Class Tag - forbidden constructor");
 }
 
-ModbusTag::ModbusTag(const uint16_t addr) {
+I2Ctag::I2Ctag(const uint16_t addr) {
 	this->_address = addr;
-	this->_rawValue = 0;
+	this->_value = 0.0;
 }
 
-ModbusTag::~ModbusTag() {
+I2Ctag::~I2Ctag() {
 	//cout << "Topic: <" << topic << ">" << endl;
 	//printf("%s - destructor %d\n", __func__, address);
 }
 
-void ModbusTag::noreadNotify(void) {
+void I2Ctag::noreadNotify(void) {
 	if (_noreadcount <= _noreadignore)	// if noreadignore is 0 noreadcount will still increment to 1
 		_noreadcount++;					// a noreadcount > 0 indicates the tag is in noread state
 }
 
-bool ModbusTag::isNoread(void) {
+bool I2Ctag::isNoread(void) {
 	if (_noreadcount > 0) return true;
 	else return false;
 }
 
-bool ModbusTag::noReadIgnoreExceeded(void) {
+bool I2Ctag::noReadIgnoreExceeded(void) {
 	if (_noreadcount > _noreadignore) return true;
 	else return false;
 }
 
-void ModbusTag::setSlaveId(int newId) {
+void I2Ctag::setSlaveId(int newId) {
 	_slaveId = newId;
 }
 
-uint8_t ModbusTag::getSlaveId(void) {
+uint8_t I2Ctag::getSlaveId(void) {
 	return _slaveId;
 }
 
-void ModbusTag::setAddress(int newAddress) {
+void I2Ctag::setAddress(uint16_t newAddress) {
 	_address = newAddress;
 }
 
-uint16_t ModbusTag::getAddress(void) {
+uint16_t I2Ctag::getAddress(void) {
 	return _address;
 }
 
-void ModbusTag::setTopic(const char *topicStr) {
+void I2Ctag::setTopic(const char *topicStr) {
 	if (topicStr != NULL) {
 		_topic = topicStr;
 	}
 }
 
-const char* ModbusTag::getTopic(void) {
+const char* I2Ctag::getTopic(void) {
 	return _topic.c_str();
 }
 
-std::string ModbusTag::getTopicString(void) {
+std::string I2Ctag::getTopicString(void) {
 	return _topic;
 }
 
-void ModbusTag::setPublishRetain(bool newRetain) {
+void I2Ctag::setPublishRetain(bool newRetain) {
     _publish_retain = newRetain;
 }
 
-bool ModbusTag::getPublishRetain(void) {
+bool I2Ctag::getPublishRetain(void) {
     return _publish_retain;
 }
 
-void ModbusTag::setIgnoreRetained(bool newValue) {
+void I2Ctag::setIgnoreRetained(bool newValue) {
 	_ignoreRetained = newValue;
 }
 
-bool ModbusTag::getIgnoreRetained(void) {
+bool I2Ctag::getIgnoreRetained(void) {
 	return _ignoreRetained;
 }
 
-
-void ModbusTag::setFormat(const char *formatStr) {
+void I2Ctag::setFormat(const char *formatStr) {
 	if (formatStr != NULL) {
 		_format = formatStr;
 	}
 }
 
-const char* ModbusTag::getFormat(void) {
+const char* I2Ctag::getFormat(void) {
 	return _format.c_str();
 }
 
-void ModbusTag::setRawValue(int16_t intValue) {
+void I2Ctag::setValue(double newValue) {
+	_value = newValue;
+	_lastUpdateTime = time(NULL);
+}
+
+double I2Ctag::getValue(void) {
+	return _value;
+}
+
+/*
+void I2Ctag::setRawValue(int16_t intValue) {
 	switch(_dataType) {
 		case 'r':
 			_rawValue = intValue;
@@ -158,68 +164,71 @@ void ModbusTag::setRawValue(int16_t intValue) {
 	_noreadcount = 0;
 }
 
-int16_t ModbusTag::getRawValue(void) {
+int16_t I2Ctag::getRawValue(void) {
 	return _rawValue;
 }
+*/
 
-uint16_t ModbusTag::getBoolValue(void) {
-	if (_rawValue == 0)
+uint16_t I2Ctag::getBoolValue(void) {
+	if (_value == 0.0)
 		return false;
 	else
 		return true;
 }
 
-float ModbusTag::getScaledValue(void) {
-	float fValue = (float) _rawValue;
-	fValue *= _multiplier;
-	return fValue + _offset;
+float I2Ctag::getScaledValue(void) {
+	//float fValue = (float) _rawValue;
+	double dValue = _value;
+	dValue *= _multiplier;
+	return dValue + _offset;
 }
 
-void ModbusTag::setMultiplier(float newMultiplier) {
+void I2Ctag::setMultiplier(float newMultiplier) {
 	_multiplier = newMultiplier;
 }
 
-float ModbusTag::getMultiplier(void) {
+float I2Ctag::getMultiplier(void) {
 	return _multiplier;
 }
 
-void ModbusTag::setOffset(float newOffset) {
+void I2Ctag::setOffset(float newOffset) {
 	_offset = newOffset;
 }
 
-void ModbusTag::setUpdateCycleId(int ident) {
+void I2Ctag::setUpdateCycleId(int ident) {
 	_updatecycle_id = ident;
 }
 
-int ModbusTag::updateCycleId(void) {
+int I2Ctag::updateCycleId(void) {
 	return _updatecycle_id;
 }
 
-void ModbusTag::setNoreadValue(float newValue) {
+void I2Ctag::setNoreadValue(float newValue) {
 	_noreadvalue = newValue;
 }
 
-float ModbusTag::getNoreadValue(void) {
+float I2Ctag::getNoreadValue(void) {
 	return _noreadvalue;
 }
 
-void ModbusTag::setNoreadAction(int newValue) {
+void I2Ctag::setNoreadAction(int newValue) {
 	_noreadaction = newValue;
 }
-	
-int ModbusTag::getNoreadAction(void) {
+
+int I2Ctag::getNoreadAction(void) {
 	return _noreadaction;
 }
-	
-void ModbusTag::setNoreadIgnore(int newValue) {
+
+void I2Ctag::setNoreadIgnore(int newValue) {
 	_noreadignore = newValue;
 }
-	
-int ModbusTag::getNoreadIgnore(void) {
+
+int I2Ctag::getNoreadIgnore(void) {
 	return _noreadignore;
 }
 
-bool ModbusTag::setDataType(char newType) {
+/*
+bool I2Ctag::setDataType(char newType) {
 	switch (newType) {
 	case 'i':
 	case 'I':
@@ -239,30 +248,7 @@ bool ModbusTag::setDataType(char newType) {
 	return true;
 }
 
-char ModbusTag::getDataType(void) {
+char I2Ctag::getDataType(void) {
 	return _dataType;
 }
-
-void ModbusTag::setGroup(int newValue) {
-	_group = newValue;
-}
-	
-int ModbusTag::getGroup(void) {
-	return _group;
-}
-
-void ModbusTag::setReferenceTime(time_t newValue) {
-	_referenceTime = newValue;
-}
-	
-time_t ModbusTag::getReferenceTime(void) {
-	return _referenceTime;
-}
-
-void ModbusTag::setWritePending(bool newValue) {
-	_writePending = newValue;
-}
-	
-bool ModbusTag::getWritePending(void) {
-	return _writePending;
-}
+*/
