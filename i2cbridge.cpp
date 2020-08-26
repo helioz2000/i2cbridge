@@ -59,11 +59,12 @@ const int version_minor = 0;
 
 // Calibration data for power management analogs
 #define PDU_BAT_V_SCALE_FACTOR 4.0	//Divider 3k/1k (16V->4V)
-#define PDU_CURRENT_V_SCALE_FACTOR 1.25	//Divider 750K/3K (5V -> 4V)
+//#define PDU_CURRENT_V_SCALE_FACTOR 1.25	//Divider 750K/3K (5V -> 4V)
+#define PDU_CURRENT_V_SCALE_FACTOR 1.25   //Divider 750K/3K (5V -> 4V)
 #define PDU_I1_ZERO_OFFSET 2547.5	// mV for zero point
-#define PDU_I2_ZERO_OFFSET 2500.0	// mV for zero point
-#define PDU_I3_ZERO_OFFSET 2536.0
-#define PDU_I4_ZERO_OFFSET 2538.5
+#define PDU_I2_ZERO_OFFSET 2527.0	// mV for zero point
+#define PDU_I3_ZERO_OFFSET 2534.0
+#define PDU_I4_ZERO_OFFSET 2536.5
 #define PDU_I5_ZERO_OFFSET 2500.0
 
 // ACS712 V->I conversion factors
@@ -94,7 +95,7 @@ double accPwrChg, accPwrDsc;		// power accumulator (no reset)
 updatecycle *updateCycles = NULL;	// array of update cycle definitions
 I2Ctag *i2cReadTags = NULL;			// array of all I2C tags
 
-int i2cDebugLevel = 1;
+int i2cDebugLevel = 0;
 int i2cTagCount = -1;
 uint32_t i2cTransactionDelay = 0;	// delay between modbus transactions
 #define I2C_DEVICEID_MAX 254		// highest permitted I2C device ID
@@ -189,9 +190,12 @@ void timespec_set(struct timespec *src, struct timespec *dst) {
  */
 bool readConfig (void)
 {
-	//int ival;
-	// Read the file. If there is an error, report it and exit.
+//	if (i2cDebugLevel > 0) {
+//		printf("%s\n", __func__);
+//		fflush(stdout);
+//	}
 
+	// Read the file. If there is an error, report it and exit.
 	try
 	{
 		cfg.readFile(cfgFileName.c_str());
@@ -209,7 +213,11 @@ bool readConfig (void)
 	}
 
 	//log (LOG_INFO, "CFG file read OK");
-	//std::cerr << cfgFileName << " read OK" <<endl;
+	if (i2cDebugLevel > 0) {
+		printf("%s ", __func__);
+		std::cerr << cfgFileName << " read OK" <<endl;
+		fflush(stdout);
+	}
 
 	try {
 		setMainLoopInterval(cfg.lookup("mainloopinterval"));
@@ -229,6 +237,10 @@ bool readConfig (void)
 		std::cerr << "Error in config file <" << excp.getPath() << "> is not a string" << std::endl;
 		return false;
 	}
+//	if (i2cDebugLevel > 0) {
+//		printf("%s: Done\n", __func__);
+//		fflush(stdout);
+//	}
 	return true;
 }
 
@@ -534,6 +546,37 @@ float current_reading(int rawAnalog, float zeroOffset, float mVperA)
 }
 
 /**
+ * raw analog reading
+ */
+float i2c_raw_voltage(int channel) {
+	float mVunscaled, raw;
+	switch (channel) {
+		case 0:		// Voltage
+			raw = pwr_adc1.getConversionP0GND();
+			break;
+		case 1:		// Current 1
+			raw = pwr_adc2.getConversionP0GND();
+			break;
+		case 2:		// Current 2
+			raw = pwr_adc2.getConversionP1GND();
+			break;
+		case 3:		// Current 3
+			raw = pwr_adc2.getConversionP2GND();
+			break;
+		case 4:		// Current 4
+			raw = pwr_adc2.getConversionP3GND();
+			break;
+		case 5:		// Current 5
+			raw = pwr_adc1.getConversionP1GND();
+			break;
+		default:
+			raw = 0.0;
+	}
+	mVunscaled = (double)raw * ADS1115_MV_4P096;
+	return mVunscaled;
+}
+
+/**
  * Get voltage reading from power distribution unit (PDU)
  * @returns: voltage reading in mV
  */
@@ -612,6 +655,14 @@ bool i2c_read_tag(I2Ctag *tag) {
 		case 205:
 			readResult = i2c_pdu_current(tag->getAddress()-200, &value);
 			break;
+		case 250:
+		case 251:
+		case 252:
+		case 253:
+		case 254:
+		case 255:
+			value = i2c_raw_voltage(tag->getAddress()-250);
+			break;
 		case 301:
 			value = hw.read_cpu_temp();
 			break;
@@ -637,7 +688,7 @@ bool i2c_read_tag(I2Ctag *tag) {
 			value = accPwrDsc;
 			break;
 		default:
-			printf("%s %s - unknown address %d\n", __FILE__, __func__, tag->getAddress());
+			printf("%s: %s - unknown address %d\n", __FILE__, __func__, tag->getAddress());
 			retVal = false;
 			break;
 	}
@@ -645,7 +696,7 @@ bool i2c_read_tag(I2Ctag *tag) {
 	if (readResult == 0) {
 		tag->setValue(value);
 	} else {
-		printf("%s %s - read error on tag address %d\n", __FILE__, __func__, tag->getAddress());
+		printf("%s: %s - read error on tag address %d\n", __FILE__, __func__, tag->getAddress());
 	}
 
 	if (retVal) {
@@ -735,6 +786,9 @@ bool i2c_assign_updatecycles () {
 		// -- We have some matching tags
 		// allocate array for tags in this cycleupdate
 		intArray = new int[matchCount+1];			// +1 to allow for end marker
+		if (i2cDebugLevel > 0) {
+			printf("%s: %d tags for update cycle %d\n", __func__, matchCount, updidx);
+		}
 		// fill array with matching tag indexes
 		i2cTagIdx = 0;
 		arIndex = 0;
@@ -753,6 +807,9 @@ bool i2c_assign_updatecycles () {
 		updateCycles[updidx].tagArraySize = arIndex;
 		// next update index
 		updidx++;
+	}
+	if (i2cDebugLevel > 0) {
+		fflush(stdout);
 	}
 	return true;
 }
@@ -805,8 +862,11 @@ bool i2c_config_tags(Setting& i2cTagsSettings, uint8_t deviceId) {
 			if (i2cTagsSettings[tagIndex].lookupValue("noreadignore", intValue))
 				i2cReadTags[i2cTagCount].setNoreadIgnore(intValue);
 		}
-		cout << "Tag " << i2cTagCount << " addr: " << tagAddress << " cycle: " << tagUpdateCycle;
-		cout << " Topic: " << i2cReadTags[i2cTagCount].getTopicString() << endl;
+		if (i2cDebugLevel > 0) {
+			printf("%s: [%d] ", __func__, tagIndex);
+			cout << "Tag " << i2cTagCount << " addr: " << tagAddress << " cycle: " << tagUpdateCycle;
+			cout << " Topic: " << i2cReadTags[i2cTagCount].getTopicString() << endl;
+		}
 		i2cTagCount++;
 	}
 	return true;
@@ -828,9 +888,16 @@ bool i2c_config_devices(Setting& i2cDeviceSettings) {
 		return false;
 	}
 
+	if (i2cDebugLevel > 0) {
+		printf("%s: Total number of devices: %d\n", __func__, numDevices);
+	}
+
 	// calculate the total number of tags for all configured slaves
 	numTags = 0;
 	for (int deviceIdx = 0; deviceIdx < numDevices; deviceIdx++) {
+		if (i2cDebugLevel > 0) {
+			printf("%s: counting tags for device: %d\n", __func__, deviceIdx);
+		}
 		if (i2cDeviceSettings[deviceIdx].exists("tags")) {
 			if (!i2cDeviceSettings[deviceIdx].lookupValue("enabled", deviceEnabled)) {
 				deviceEnabled = true;	// true is assumed if there is no entry in config file
@@ -844,13 +911,16 @@ bool i2c_config_devices(Setting& i2cDeviceSettings) {
 
 	i2cReadTags = new I2Ctag[numTags+1];
 
+	if (i2cDebugLevel > 0) {
+		printf("%s: Total number of enabled tags: %d\n", __func__, numTags);
+	}
 	i2cTagCount = 0;
 	// iterate through devices
 	for (int deviceIdx = 0; deviceIdx < numDevices; deviceIdx++) {
 		i2cDeviceSettings[deviceIdx].lookupValue("name", deviceName);
 		if (i2cDeviceSettings[deviceIdx].lookupValue("id", deviceId)) {
 			if (i2cDebugLevel > 0)
-				printf("%s - processing Device %d (%s)\n", __func__, deviceId, deviceName.c_str());
+				printf("%s: processing Device %d (%s)\n", __func__, deviceId, deviceName.c_str());
 		} else {
 			log(LOG_ERR, "Config error - PL device ID missing in entry %d", deviceId+1);
 			return false;
@@ -876,6 +946,11 @@ bool i2c_config_devices(Setting& i2cDeviceSettings) {
 	// mark end of array
 	i2cReadTags[i2cTagCount].setUpdateCycleId(-1);
 	i2cReadTags[i2cTagCount].setSlaveId(I2C_DEVICEID_MAX +1);
+	if (i2cDebugLevel > 0) {
+		printf("%s: completed\n", __func__);
+		fflush(stdout);
+		fflush(stderr);
+	}
 	return true;
 }
 
@@ -908,11 +983,19 @@ bool i2c_config_updatecycles(Setting& updateCyclesSettings) {
 		updateCycles[index].ident = idValue;
 		updateCycles[index].interval = interval;
 		updateCycles[index].nextUpdateTime = time(0) + interval;
-		//cout << "Update " << index << " ID " << idValue << " Interval: " << interval << " t:" << updateCycles[index].nextUpdateTime << endl;
+		if (i2cDebugLevel > 0) {
+			printf("%s: ", __func__);
+			cout << "Update " << index << " ID " << idValue; 
+			cout << " Interval: " << interval << " t:" << updateCycles[index].nextUpdateTime << endl;
+		}
 	}
 	// mark end of data
 	updateCycles[index].ident = -1;
 	updateCycles[index].interval = -1;
+
+	if (i2cDebugLevel > 0) {
+		fflush(stdout);
+	}
 
 	return true;
 }
@@ -922,6 +1005,12 @@ bool i2c_config_updatecycles(Setting& updateCyclesSettings) {
  * read I2C configuration from config file
  */
 bool i2c_config() {
+
+	if (i2cDebugLevel > 0) {
+		printf("%s\n", __func__);
+		fflush(stdout);
+	}
+
 	// Configure update cycles
 	try {
 		Setting& updateCyclesSettings = cfg.lookup("updatecycles");
@@ -966,37 +1055,54 @@ bool i2c_init() {
     // sequence is important, the I2C setup also calls
     // WiringPiSetupSys() which is required for pin IO functions
 
+	// VI-Monitor board
+	if (!vimon.initialize( ADS1115_ADDRESS_ADDR_SDA )) {
+		log(LOG_ERR, "vimon init failed");
+		return false;
+	}
+
+	if (i2cDebugLevel > 0) {
+		printf("%s: vimon board init OK\n", __func__);
+		fflush(stdout);
+	}
+
     // Power Management board ADC 1
     pwr_adc1.initialize();
     if (!pwr_adc1.testConnection()) {
-        if (!runningAsDaemon) {
-            printf("ADS1115 #1 on power management board not found \n");
-            // exit(0);
-        }
+		log(LOG_ERR, "ADC1 on PDU failed to detect");
+		return false;
     }
+
+	if (i2cDebugLevel > 0) {
+		printf("%s: ADC1 on PDU present\n", __func__);
+		fflush(stdout);
+	}
+
     pwr_adc1.setGain(ADS1115_PGA_4P096);
-    if (!runningAsDaemon) {
-		printf("Power Management ADC 1 present\n");
-        pwr_adc1.showConfigRegister();
-    }
+	if (!runningAsDaemon) {
+		pwr_adc1.showConfigRegister();
+	}
 
 	// Power Management board ADC 1
     pwr_adc2.initialize();
     if (!pwr_adc2.testConnection()) {
-        if (!runningAsDaemon) {
-            printf("ADS1115 #2 on power management board not found \n");
-            // exit(0);
-        }
+		log(LOG_ERR, "ADC2 on PDU failed to detect");
+		return false;
     }
+
+	if (i2cDebugLevel > 0) {
+		printf("%s: ADC2 on PDU present\n", __func__);
+		fflush(stdout);
+	}
+
     pwr_adc2.setGain(ADS1115_PGA_4P096);
     if (!runningAsDaemon) {
-		printf("Power Management ADC 2 present\n");
         pwr_adc2.showConfigRegister();
 	}
 
-	// VI-Monitor board
-	if (!vimon.initialize( ADS1115_ADDRESS_ADDR_SDA )) {
-		return false;
+	if (i2cDebugLevel > 0) {
+		printf("%s: I2C hardware initialized\n", __func__);
+		fflush(stdout);
 	}
 
 	if (!i2c_config()) return false;
@@ -1120,11 +1226,14 @@ void main_loop()
  * @return
  */
 static void showUsage(void) {
-	cout << "usage:" << endl;
-	cout << processName << "-cCfgFileName -d -h" << endl;
-	cout << "c = name of config file" << endl;
-	cout << "d = enable debug mode" << endl;
-	cout << "h = show help" << endl;
+	if (!runningAsDaemon) {
+		cout << "usage:" << endl;
+		cout << processName << "-cCfgFileName -d -h" << endl;
+		cout << "c = name of config file" << endl;
+		cout << "d = enable debug mode" << endl;
+		cout << "i = I2C debug enable" << endl;
+		cout << "h = show help" << endl;
+	}
 }
 
 /** Parse command line arguments.
@@ -1161,6 +1270,9 @@ bool parseArguments(int argc, char *argv[]) {
 					showUsage();
 					retval = false;
 					break;
+				case 'i':
+					i2cDebugLevel = 1;
+					break;
 				default:
 					log(LOG_NOTICE, "unknown parameter: %s", argv[i]);
 					showUsage();
@@ -1193,14 +1305,23 @@ int main (int argc, char *argv[])
 	}
 
 	// read config file
-	if (! readConfig()) {
+	if (!readConfig()) {
 		log(LOG_ERR, "Error reading config file <%s>", cfgFileName.c_str());
 		goto exit_fail;
 	}
 
 	if (!mqtt_init()) goto exit_fail;
+//	printf("%s: mqtt_init done\n", __func__);
+//	fflush(stdout);
+
 	if (!init_values()) goto exit_fail;
+//	printf("%s: init_values done\n", __func__);
+//	fflush(stdout);
+
 	if (!i2c_init()) goto exit_fail;
+//	printf("%s: i2c_init done\n", __func__);
+//	fflush(stdout);
+
 	usleep(100000);
 	main_loop();
 
