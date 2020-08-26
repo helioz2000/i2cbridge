@@ -57,6 +57,21 @@ const int version_minor = 0;
 #define MQTT_CLIENT_ID "i2cbridge"
 #define MQTT_RECONNECT_INTERVAL 10			// seconds between reconnect attempts
 
+// Calibration data for power management analogs
+#define PDU_BAT_V_SCALE_FACTOR 4.0	//Divider 3k/1k (16V->4V)
+#define PDU_CURRENT_V_SCALE_FACTOR 1.25	//Divider 750K/3K (5V -> 4V)
+#define PDU_I1_ZERO_OFFSET 2547.5	// mV for zero point
+#define PDU_I2_ZERO_OFFSET 2500.0	// mV for zero point
+#define PDU_I3_ZERO_OFFSET 2536.0
+#define PDU_I4_ZERO_OFFSET 2538.5
+#define PDU_I5_ZERO_OFFSET 2500.0
+
+// ACS712 V->I conversion factors
+#define ACS712_30A_MV_PER_A 66		//mV per A for ACS712 current sensor
+#define ACS712_20A_MV_PER_A 100
+#define ACS712_5A_MV_PER_A 185
+
+
 static string cpu_temp_topic = "";
 static string cfgFileName;
 static string processName;
@@ -103,9 +118,8 @@ Hardware hw(false);	// no screen
 VImon vimon;
 
 // ADCs
-//ADS1115 pwr_adc1(ADS1115_ADDRESS_ADDR_GND);	// ADC on power management board
-//ADS1115 pwr_adc2(ADS1115_ADDRESS_ADDR_VDD);	// ADC 2 on power management board
-//ADS1115 visense_adc(ADS1115_ADDRESS_ADDR_SDA);    // ADC on voltage/current sensor board
+ADS1115 pwr_adc1(ADS1115_ADDRESS_ADDR_GND);	// ADC 1 on power management board
+ADS1115 pwr_adc2(ADS1115_ADDRESS_ADDR_VDD);	// ADC 2 on power management board
 // ..._ADDR_GND / VDD / SDA / SCL
 
 
@@ -498,12 +512,76 @@ void mqtt_clear_tags(bool publish_noread = true, bool clear_retain = true) {
 			tagIndex++;
 		}
 		index++;
-	}	// while 
+	}	// while
 
 }
 
 #pragma mark I2C
 
+/** Read analog current input based on ACS712
+ * @param rawAnalog the raw analog value from ADS1115
+ * @param zeroOffset mV value at zero current
+ * @param mVperA mV per A from ACS712 data sheet
+ * @return current in mA
+ */
+float current_reading(int rawAnalog, float zeroOffset, float mVperA)
+{
+    float mVscaled, mVunscaled, mA;
+    mVunscaled = (float)rawAnalog * ADS1115_MV_4P096;
+    mVscaled = mVunscaled * PDU_CURRENT_V_SCALE_FACTOR;
+    mA = (mVscaled - zeroOffset) / (mVperA / 1000);
+    return mA;
+}
+
+/**
+ * Get voltage reading from power distribution unit (PDU)
+ * @returns: voltage reading in mV
+ */
+float i2c_pdu_voltage(void) {
+	int rawAnalog;
+	float mVunscaled, mVscaled;
+    // read battery voltage from Power management board
+    rawAnalog = pwr_adc1.getConversionP0GND();
+    mVunscaled = (float)rawAnalog * ADS1115_MV_4P096;
+    mVscaled = mVunscaled * PDU_BAT_V_SCALE_FACTOR;
+//    if (!runningAsDaemon) {
+//		printf("%s: battery voltage %.2f\n", __func__, mVscaled);
+//	}
+	return mVscaled;
+}
+
+/**
+ * current current reading from PDU
+ * @param channel: current channel [1-5]
+ * @param value: float pointer to current value in mA
+ * @returns: 0 for success, -1 on failure
+ */
+int i2c_pdu_current(int channel, float *value) {
+	int retVal;
+	if ( (channel < 1) || (channel > 5) ) return -1;
+	switch (channel) {
+		case 1:
+			*value = current_reading(pwr_adc2.getConversionP0GND(), PDU_I1_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			break;
+		case 2:
+			*value = current_reading(pwr_adc2.getConversionP1GND(), PDU_I2_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			break;
+		case 3:
+			*value = current_reading(pwr_adc2.getConversionP2GND(), PDU_I3_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			break;
+		case 4:
+			*value = current_reading(pwr_adc2.getConversionP3GND(), PDU_I4_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			break;
+		case 5:
+			*value = current_reading(pwr_adc1.getConversionP1GND(), PDU_I5_ZERO_OFFSET, (float)ACS712_5A_MV_PER_A);
+			break;
+		default: return -1;
+	}
+//	if (!runningAsDaemon) {
+//		printf("%s: Ch%d %.2f\n", __func__, channel, *value);
+//	}
+	return 0;
+}
 
 /**
  * Read single tag from I2C device
@@ -523,6 +601,16 @@ bool i2c_read_tag(I2Ctag *tag) {
 	switch(tag->getAddress()) {
 		case 101:
 			value = tmp_env.readTempC();
+			break;
+		case 200:		// PDU voltage
+			value = i2c_pdu_voltage();
+			break;
+		case 201:		// PDU current channels (5)
+		case 202:
+		case 203:
+		case 204:
+		case 205:
+			readResult = i2c_pdu_current(tag->getAddress()-200, &value);
 			break;
 		case 301:
 			value = hw.read_cpu_temp();
@@ -878,35 +966,33 @@ bool i2c_init() {
     // sequence is important, the I2C setup also calls
     // WiringPiSetupSys() which is required for pin IO functions
 
-    // initialize environment temp sensor
-//	tmp_env.initialize();
-
-    // initialize rack temp sensor
-    //tmp_rack.initialize();
-
-    // Power Management board ADC's
-/*    pwr_adc1.initialize();
+    // Power Management board ADC 1
+    pwr_adc1.initialize();
     if (!pwr_adc1.testConnection()) {
-        if (!runAsDaemon) {
+        if (!runningAsDaemon) {
             printf("ADS1115 #1 on power management board not found \n");
             // exit(0);
         }
     }
     pwr_adc1.setGain(ADS1115_PGA_4P096);
-    if (!runAsDaemon) {
+    if (!runningAsDaemon) {
+		printf("Power Management ADC 1 present\n");
         pwr_adc1.showConfigRegister();
     }
+
+	// Power Management board ADC 1
     pwr_adc2.initialize();
     if (!pwr_adc2.testConnection()) {
-        if (!runAsDaemon) {
+        if (!runningAsDaemon) {
             printf("ADS1115 #2 on power management board not found \n");
             // exit(0);
         }
     }
     pwr_adc2.setGain(ADS1115_PGA_4P096);
-    if (!runAsDaemon) {
+    if (!runningAsDaemon) {
+		printf("Power Management ADC 2 present\n");
         pwr_adc2.showConfigRegister();
-	} */
+	}
 
 	// VI-Monitor board
 	if (!vimon.initialize( ADS1115_ADDRESS_ADDR_SDA )) {
