@@ -59,13 +59,13 @@ const int version_minor = 0;
 
 // Calibration data for power management analogs
 #define PDU_BAT_V_SCALE_FACTOR 4.0	//Divider 3k/1k (16V->4V)
-//#define PDU_CURRENT_V_SCALE_FACTOR 1.25	//Divider 750K/3K (5V -> 4V)
 #define PDU_CURRENT_V_SCALE_FACTOR 1.25   //Divider 750K/3K (5V -> 4V)
 #define PDU_I1_ZERO_OFFSET 2547.5	// mV for zero point
 #define PDU_I2_ZERO_OFFSET 2527.0	// mV for zero point
 #define PDU_I3_ZERO_OFFSET 2534.0
 #define PDU_I4_ZERO_OFFSET 2536.5
 #define PDU_I5_ZERO_OFFSET 2500.0
+#define PDU_5V_SCALE_FACTOR 1.33032226	// Divider 0.9725/2.9458K (5449mV -> 4096mV)
 
 // ACS712 V->I conversion factors
 #define ACS712_30A_MV_PER_A 66		//mV per A for ACS712 current sensor
@@ -548,7 +548,7 @@ float current_reading(int rawAnalog, float zeroOffset, float mVperA)
 /**
  * raw analog reading
  */
-float i2c_raw_voltage(int channel) {
+double i2c_raw_voltage(int channel) {
 	float mVunscaled, raw;
 	switch (channel) {
 		case 0:		// Voltage
@@ -569,6 +569,12 @@ float i2c_raw_voltage(int channel) {
 		case 5:		// Current 5
 			raw = pwr_adc1.getConversionP1GND();
 			break;
+		case 6:		// 5V SMPS
+			raw = pwr_adc1.getConversionP2GND();
+			break;
+		case 7:		//3V3 SMPS
+			raw = pwr_adc1.getConversionP3GND();
+			break;
 		default:
 			raw = 0.0;
 	}
@@ -578,17 +584,29 @@ float i2c_raw_voltage(int channel) {
 
 /**
  * Get voltage reading from power distribution unit (PDU)
+ * @param channel: 0 = battery, 6 = 5V SMPS, 7 = 3V3 SMPS
  * @returns: voltage reading in mV
  */
-float i2c_pdu_voltage(void) {
+float i2c_pdu_voltage(int channel) {
 	int rawAnalog;
-	float mVunscaled, mVscaled;
-    // read battery voltage from Power management board
-    rawAnalog = pwr_adc1.getConversionP0GND();
-    mVunscaled = (float)rawAnalog * ADS1115_MV_4P096;
-    mVscaled = mVunscaled * PDU_BAT_V_SCALE_FACTOR;
+	double mVunscaled, mVscaled;
+    // read battery voltages from Power management board
+	mVunscaled = i2c_raw_voltage(channel);
+	switch (channel) {
+		case 0:		// Battery Voltage
+			mVscaled = mVunscaled * PDU_BAT_V_SCALE_FACTOR;
+			break;
+		case 6:		// 5V SMPS
+			mVscaled = mVunscaled * PDU_5V_SCALE_FACTOR;
+			break;
+		case 7:		// 3V3 SMPS
+			mVscaled = mVunscaled;
+			break;
+		default:
+			mVscaled = mVunscaled;
+	}
 //    if (!runningAsDaemon) {
-//		printf("%s: battery voltage %.2f\n", __func__, mVscaled);
+//		printf("%s: battery %d  %.2f\n", __func__, channel, mVscaled);
 //	}
 	return mVscaled;
 }
@@ -646,7 +664,7 @@ bool i2c_read_tag(I2Ctag *tag) {
 			value = tmp_env.readTempC();
 			break;
 		case 200:		// PDU voltage
-			value = i2c_pdu_voltage();
+			value = i2c_pdu_voltage(0);
 			break;
 		case 201:		// PDU current channels (5)
 		case 202:
@@ -655,12 +673,20 @@ bool i2c_read_tag(I2Ctag *tag) {
 		case 205:
 			readResult = i2c_pdu_current(tag->getAddress()-200, &value);
 			break;
-		case 250:
+		case 206:		// PDU 5V supply
+			value = i2c_pdu_voltage(6);
+			break;
+		case 207:		// PDU 3V3 supply
+			value = i2c_pdu_voltage(7);
+			break;
+		case 250:		// PDU raw voltage on ADC
 		case 251:
 		case 252:
 		case 253:
 		case 254:
 		case 255:
+		case 256:
+		case 257:
 			value = i2c_raw_voltage(tag->getAddress()-250);
 			break;
 		case 301:
