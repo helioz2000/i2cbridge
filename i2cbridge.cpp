@@ -59,18 +59,32 @@ const int version_minor = 0;
 
 // Calibration data for power management analogs
 #define PDU_BAT_V_SCALE_FACTOR 4.0	//Divider 3k/1k (16V->4V)
-#define PDU_CURRENT_V_SCALE_FACTOR 1.25   //Divider 750K/3K (5V -> 4V)
-#define PDU_I1_ZERO_OFFSET 2547.5	// mV for zero point
-#define PDU_I2_ZERO_OFFSET 2527.0	// mV for zero point
-#define PDU_I3_ZERO_OFFSET 2534.0
-#define PDU_I4_ZERO_OFFSET 2536.5
-#define PDU_I5_ZERO_OFFSET 2500.0
+//#define PDU_I_V_SCALE_FACTOR 1.252947   //Divider 750K/3K (5V -> 4V)
+
+// Zero offset adjustment (if ACS712 is not exactly at 50% of Vs)
+#define PDU_I1_ZERO_V_OFFSET 5.0
+#define PDU_I2_ZERO_V_OFFSET 5.0
+#define PDU_I3_ZERO_V_OFFSET 5.0
+#define PDU_I4_ZERO_V_OFFSET 5.0
+#define PDU_I5_ZERO_V_OFFSET -65.0		// mV offset for zero point 
+
+#define PDU_I1_V_SCALE_FACTOR 1.0
+#define PDU_I2_V_SCALE_FACTOR 1.0
+#define PDU_I3_V_SCALE_FACTOR 1.0
+#define PDU_I4_V_SCALE_FACTOR 1.0
+#define PDU_I5_V_SCALE_FACTOR 1.0
+
+//#define PDU_I1_ZERO_OFFSET 2547.5	// mV for zero point
+//#define PDU_I2_ZERO_OFFSET 2527.0	// mV for zero point
+//#define PDU_I3_ZERO_OFFSET 2534.0
+//#define PDU_I4_ZERO_OFFSET 2536.5
+//#define PDU_I5_ZERO_OFFSET 2500.0
 #define PDU_5V_SCALE_FACTOR 1.33032226	// Divider 0.9725/2.9458K (5449mV -> 4096mV)
 
 // ACS712 V->I conversion factors
-#define ACS712_30A_MV_PER_A 66		//mV per A for ACS712 current sensor
+#define ACS712_30A_MV_PER_A 67		//mV per A for ACS712 current sensor
 #define ACS712_20A_MV_PER_A 100
-#define ACS712_5A_MV_PER_A 185
+#define ACS712_5A_MV_PER_A 188		// 
 
 
 static string cpu_temp_topic = "";
@@ -108,6 +122,7 @@ void mqtt_topic_update(const struct mosquitto_message *message);
 void mqtt_subscribe_tags(void);
 void setMainLoopInterval(int newValue);
 bool i2c_read_process();
+float i2c_pdu_voltage(int channel);
 bool mqtt_publish_tag(I2Ctag *tag);
 void mqtt_clear_tags(bool publish_noread, bool clear_retain);
 
@@ -532,17 +547,24 @@ void mqtt_clear_tags(bool publish_noread = true, bool clear_retain = true) {
 
 /** Read analog current input based on ACS712
  * @param rawAnalog the raw analog value from ADS1115
- * @param zeroOffset mV value at zero current
- * @param mVperA mV per A from ACS712 data sheet
+ * @param vScaleFactor: scaling of ADC reading (e.g. voltage divider)
+ * @param mVperA: mV per A from ACS712 data sheet
+ * @param vOffset: compensation if ACS712 zero point is not exactly 50% of 5V supply
  * @return current in mA
+ * Note: the zero point is calculated by measuring the ACS712 supply voltage
+ *		 and using 50% of that voltage measurement as the zero point.
+ *
  */
-float current_reading(int rawAnalog, float zeroOffset, float mVperA)
-{
-    float mVscaled, mVunscaled, mA;
-    mVunscaled = (float)rawAnalog * ADS1115_MV_4P096;
-    mVscaled = mVunscaled * PDU_CURRENT_V_SCALE_FACTOR;
-    mA = (mVscaled - zeroOffset) / (mVperA / 1000);
-    return mA;
+float current_reading(int rawAnalog, double vScaleFactor, float mVperA, double vOffset =  0.0) {
+    double mVscaled, mVunscaled, mA;
+	double zeroOffset = (i2c_pdu_voltage(6) / 2) + vOffset;
+    mVunscaled = (double)rawAnalog * ADS1115_MV_4P096;
+    mVscaled = mVunscaled * vScaleFactor;
+   	mA = (mVscaled - zeroOffset) / (mVperA / 1000);
+	// sanity check - discard out of range readings
+	if (mA > 20000.0) mA = 0.0;
+	if (mA < -20000.0) mA = 0.0;
+    return (float)(mA);
 }
 
 /**
@@ -619,22 +641,28 @@ float i2c_pdu_voltage(int channel) {
  */
 int i2c_pdu_current(int channel, float *value) {
 	int retVal;
+	double val;
+	double zerooffset = i2c_pdu_voltage(6) / 2;
 	if ( (channel < 1) || (channel > 5) ) return -1;
 	switch (channel) {
 		case 1:
-			*value = current_reading(pwr_adc2.getConversionP0GND(), PDU_I1_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			val = current_reading(pwr_adc2.getConversionP0GND(), PDU_I1_V_SCALE_FACTOR, (float)ACS712_30A_MV_PER_A, PDU_I1_ZERO_V_OFFSET);
+			*value = val * -1;		// invert channel, ACS712 provides negative number for current draw
 			break;
 		case 2:
-			*value = current_reading(pwr_adc2.getConversionP1GND(), PDU_I2_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			val = current_reading(pwr_adc2.getConversionP1GND(), PDU_I2_V_SCALE_FACTOR, (float)ACS712_30A_MV_PER_A, PDU_I2_ZERO_V_OFFSET);
+			*value = val * -1;		// invert channel, ACS712 provides negative number for current draw
 			break;
 		case 3:
-			*value = current_reading(pwr_adc2.getConversionP2GND(), PDU_I3_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			val = current_reading(pwr_adc2.getConversionP2GND(), PDU_I3_V_SCALE_FACTOR, (float)ACS712_30A_MV_PER_A, PDU_I3_ZERO_V_OFFSET);
+			*value = val * -1;		// invert channel, ACS712 provides negative number for current draw
 			break;
 		case 4:
-			*value = current_reading(pwr_adc2.getConversionP3GND(), PDU_I4_ZERO_OFFSET, (float)ACS712_30A_MV_PER_A);
+			val = current_reading(pwr_adc2.getConversionP3GND(), PDU_I4_V_SCALE_FACTOR, (float)ACS712_30A_MV_PER_A, PDU_I4_ZERO_V_OFFSET);
+			*value = val * -1;		// invert channel, ACS712 provides negative number for current draw
 			break;
 		case 5:
-			*value = current_reading(pwr_adc1.getConversionP1GND(), PDU_I5_ZERO_OFFSET, (float)ACS712_5A_MV_PER_A);
+			*value = current_reading(pwr_adc1.getConversionP1GND(), PDU_I5_V_SCALE_FACTOR, (float)ACS712_5A_MV_PER_A, PDU_I5_ZERO_V_OFFSET);
 			break;
 		default: return -1;
 	}

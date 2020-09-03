@@ -21,9 +21,9 @@
 #define V1_OFFSET 9977.0		// mV
 #define V1_MV_PER_MV 2.92368682	// mV
 
-// Voltage measurement CH 2 (not used)
-#define V2_OFFSET 10000.0		// mV
-#define V2_MV_PER_MV 2.9296857	// mV
+// Voltage measurement CH 2
+#define V2_OFFSET 9995.7		// mV
+#define V2_MV_PER_MV 2.957879792	// mV
 
 // Temperature measurement CH 2
 // Resistance calibration
