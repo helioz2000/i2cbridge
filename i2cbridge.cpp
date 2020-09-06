@@ -140,8 +140,8 @@ ADS1115 pwr_adc2(ADS1115_ADDRESS_ADDR_VDD);	// ADC 2 on power management board
 
 
 // Temperature sensors
-#define TEMP_ENV_I2C_ADDR 0x19
-MCP9808 tmp_env(TEMP_ENV_I2C_ADDR);
+//#define TEMP_ENV_I2C_ADDR 0x19
+//MCP9808 tmp_env(TEMP_ENV_I2C_ADDR);
 //MCP9808 tmp_rack(0x19);
 
 /**
@@ -688,9 +688,9 @@ bool i2c_read_tag(I2Ctag *tag) {
 	//printf("%s %s - %s\n", __FILE__, __func__, tag->getTopic());
 
 	switch(tag->getAddress()) {
-		case 101:
-			value = tmp_env.readTempC();
-			break;
+//		case 101:
+//			value = tmp_env.readTempC();
+//			break;
 		case 200:		// PDU voltage
 			value = i2c_pdu_voltage(0);
 			break;
