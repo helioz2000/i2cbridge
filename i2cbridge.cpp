@@ -723,13 +723,16 @@ bool i2c_read_tag(I2Ctag *tag) {
 		case 401:		// vimon battery voltage
 			readResult = vimon.getMilliVolts(0, &value);
 			break;
-		case 402:		// vimon battery current
+		case 402:		// battery mid point voltage
+			readResult = vimon.getMilliVolts(1, &value);
+			break;
+		case 403:		// vimon battery current
 			readResult = vimon.getBipolarMilliAmps(&value);
 			break;
-		case 403:		// vimon battery temperature
+/*		case 404:		// vimon battery temperature
 			readResult = vimon.getPT100temp(&value);
 			//printf("%s - temp: %.2f\n", __func__, readValue);
-			break;
+			break; */
 		case 1001:		// Power accumulator
 			value = accPwr * 3600;		// convert from Ws to Wh
 			//readValue = accPwr * tag->getMultiplier();
