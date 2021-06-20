@@ -144,6 +144,18 @@ public:
      */
     const char* broker(void);
 
+	/**
+	 * set MQTT broker username
+	 * @return: 0 on success, negative number for error
+	 */
+	int setUsername(const char *newUsername);
+
+	/**
+	 * set MQTT broker password
+	 * @return: 0 on success, negative number for error
+	 */
+	int setPassword(const char *newPassword);
+
     /**
      * get MQTT server port
      * @return: mqtt server port
@@ -178,7 +190,7 @@ private:
     struct mosquitto *_mosq;
     bool _connected;
     char _pub_buf[100];
-    std::string _mqttBroker;
+    std::string _mqttBroker, _mqttUsername, _mqttPassword;;
     unsigned int _mqttPort;
     int _mqttKeepalive;
 

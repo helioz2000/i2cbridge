@@ -252,6 +252,24 @@ bool readConfig (void)
 		std::cerr << "Error in config file <" << excp.getPath() << "> is not a string" << std::endl;
 		return false;
 	}
+
+	try {
+		mqtt.setUsername(cfg.lookup("mqtt.username"));
+	} catch (const SettingNotFoundException &excp) {
+	;
+	} catch (const SettingTypeException &excp) {
+ 		std::cerr << "Error in config file <" << excp.getPath() << "> is not a string" << std::endl;
+		return false;
+ 	}
+
+	try {
+		mqtt.setPassword(cfg.lookup("mqtt.password"));
+	;
+	} catch (const SettingTypeException &excp) {
+		std::cerr << "Error in config file <" << excp.getPath() << "> is not a string" << std::endl;
+		return false;
+	}
+
 //	if (i2cDebugLevel > 0) {
 //		printf("%s: Done\n", __func__);
 //		fflush(stdout);

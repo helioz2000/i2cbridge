@@ -95,23 +95,23 @@ static void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_cou
  * GLOBAL FUNCTIONS
  *********************/
 
- /*********************
-  * MEMBER FUNCTIONS
-  *********************/
+/*********************
+ * MEMBER FUNCTIONS
+ *********************/
 
- //
- // Class MQTT
- //
+//
+// Class MQTT
+//
 
- MQTT::MQTT() {
+MQTT::MQTT() {
      _construct(DEFAULT_CLIENT_ID);
- }
+}
 
- MQTT::MQTT (const char* clientID) {
+MQTT::MQTT (const char* clientID) {
      _construct(clientID);
 }
 
- void MQTT::_construct (const char* clientID) {
+void MQTT::_construct (const char* clientID) {
      _connected = false;
      _console_log_enable = false;
      _qos = 0;
@@ -150,9 +150,9 @@ static void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_cou
      mosquitto_message_callback_set(_mosq, on_message);
      mosquitto_log_callback_set(_mosq, on_log);
      mosquitto_subscribe_callback_set(_mosq, on_subscribe);
- }
+}
 
- MQTT::~MQTT() {
+MQTT::~MQTT() {
      //printf("%s - Connected: %d\n", __func__, connected);
      if (_connected) mosquitto_disconnect(_mosq) ;
      //mosquitto_loop_stop(_mosq, false);
@@ -168,8 +168,24 @@ static void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_cou
 
 void MQTT::connect(void) {
     char strbuf[255];
+	int result;
+
+	// set username and/or password if present
+	if (!_mqttUsername.empty()) {
+		// password is optional
+		if (!_mqttPassword.empty()) {
+			result = mosquitto_username_pw_set( _mosq, _mqttUsername.c_str(), _mqttPassword.c_str() );
+		} else {
+			result = mosquitto_username_pw_set( _mosq, _mqttUsername.c_str(), NULL );
+		}
+		if (result != MOSQ_ERR_SUCCESS) {
+			//sprintf(strbuf, "%s %s - mosquitto_username_pw_set failed: %s [%d]\n", __FILE__, __func__, strerror(result), result);
+			syslog(LOG_ERR, "mosquitto_username_pw_set failed: %s [%d]", strerror(result), result);
+		}
+	}
+
     // connect to mqtt server
-    int result = mosquitto_connect_async(_mosq, _mqttBroker.c_str(), _mqttPort, _mqttKeepalive);
+    result = mosquitto_connect_async(_mosq, _mqttBroker.c_str(), _mqttPort, _mqttKeepalive);
     if (result != MOSQ_ERR_SUCCESS) {
         sprintf(strbuf, "%s %s - mosquitto_connect failed: %s [%d]\n", __FILE__, __func__, strerror(result), result);
         syslog(LOG_ERR, "mosquitto_connect failed: %s [%d]", strerror(result), result);
@@ -270,6 +286,16 @@ const char* MQTT::broker(void) {
 
 unsigned int MQTT::port(void) {
     return _mqttPort;
+}
+
+int MQTT::setUsername(const char *newUsername) {
+	_mqttUsername = newUsername;
+	return 0;
+}
+
+int MQTT::setPassword(const char *newPassword) {
+	_mqttPassword = newPassword;
+	return 0;
 }
 
 bool MQTT::isConnected(void) {
