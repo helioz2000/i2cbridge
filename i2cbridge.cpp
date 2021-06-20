@@ -45,7 +45,7 @@ using namespace libconfig;
 
 const char *build_date_str = __DATE__ " " __TIME__;
 const int version_major = 1;
-const int version_minor = 0;
+const int version_minor = 1;
 
 #define CFG_DEFAULT_FILENAME "i2cbridge.cfg"
 #define CFG_DEFAULT_FILEPATH "/etc/"
