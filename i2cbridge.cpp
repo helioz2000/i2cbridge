@@ -264,6 +264,7 @@ bool readConfig (void)
 
 	try {
 		mqtt.setPassword(cfg.lookup("mqtt.password"));
+	} catch (const SettingNotFoundException &excp) {
 	;
 	} catch (const SettingTypeException &excp) {
 		std::cerr << "Error in config file <" << excp.getPath() << "> is not a string" << std::endl;
