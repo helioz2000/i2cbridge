@@ -587,10 +587,40 @@ float current_reading(int rawAnalog, double vScaleFactor, float mVperA, double v
 }
 
 /**
+ * Test connection to I2C device
+ * @param channel: channel number
+ * @returns: true is connection is OK
+ */
+bool i2c_test_connection(int channel) {
+	switch (channel) {
+		case 0:
+			return pwr_adc1.testConnection();
+		case 1:
+			return pwr_adc2.testConnection();
+		case 2:
+			return pwr_adc2.testConnection();
+		case 3:
+			return pwr_adc2.testConnection();
+		case 4:
+			return pwr_adc2.testConnection();
+		case 5:
+			return pwr_adc1.testConnection();
+		case 6:
+			return pwr_adc1.testConnection();
+		case 7:
+			return pwr_adc1.testConnection();
+		default: return false;
+	}
+}
+
+/**
  * raw analog reading
  */
 double i2c_raw_voltage(int channel) {
 	float mVunscaled, raw;
+	if (!i2c_test_connection(channel)) {
+		return 0.0;
+	}
 	switch (channel) {
 		case 0:		// Voltage
 			raw = pwr_adc1.getConversionP0GND();
@@ -663,6 +693,7 @@ int i2c_pdu_current(int channel, float *value) {
 	double val;
 	double zerooffset = i2c_pdu_voltage(6) / 2;
 	if ( (channel < 1) || (channel > 5) ) return -1;
+	if (!i2c_test_connection(channel)) return -1;
 	switch (channel) {
 		case 1:
 			val = current_reading(pwr_adc2.getConversionP0GND(), PDU_I1_V_SCALE_FACTOR, (float)ACS712_30A_MV_PER_A, PDU_I1_ZERO_V_OFFSET);
@@ -960,7 +991,7 @@ bool i2c_config_devices(Setting& i2cDeviceSettings) {
 	// we need at least one slave in config file
 	int numDevices = i2cDeviceSettings.getLength();
 	if (numDevices < 1) {
-		log(LOG_ERR, "Error in config file, no Modbus slaves found");
+		log(LOG_ERR, "Error in config file, no I2C devices found");
 		return false;
 	}
 
