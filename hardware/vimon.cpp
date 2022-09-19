@@ -74,6 +74,9 @@ void VImon::readRaw() {
 }
 
 int VImon::getRawValue(int channel, int16_t *value) {
+	if (!_adc->testConnection()) {
+		return -1;
+	}
 	switch (channel) {
 		case 0:
 			*value = _adc->getConversionP0GND();
@@ -96,6 +99,9 @@ int VImon::getRawValue(int channel, int16_t *value) {
 
 int VImon::getUnscaledMilliVolts(int channel, float *value, bool useRaw) {
 	float reading;
+	if (!_adc->testConnection()) {
+		return -1;
+	}
 	switch (channel) {
 		case 0:
 			if (useRaw)
@@ -131,6 +137,9 @@ int VImon::getUnscaledMilliVolts(int channel, float *value, bool useRaw) {
 int VImon::getMilliVolts(int channel, float *value, bool useRaw) {
 	float mVunscaled, mVscaled;
 
+	if (!_adc->testConnection()) {
+		return -1;
+	}
 	if (getUnscaledMilliVolts(channel, &mVunscaled, useRaw) < 0) {
 		return -1;
 	}
@@ -161,6 +170,9 @@ int VImon::getPT100temp(float *value, bool useRaw) {
 
 int VImon::getPT100ohm(float *value, bool useRaw) {
 	float mVunscaled;
+	if (!_adc->testConnection()) {
+		return -1;
+	}
 	if (getUnscaledMilliVolts(1, &mVunscaled, useRaw) < 0) {
 		return -1;
 	}
@@ -170,6 +182,9 @@ int VImon::getPT100ohm(float *value, bool useRaw) {
 
 int VImon::getMilliAmps(int channel, float *value, bool useRaw) {
 	float mVunscaled;
+	if (!_adc->testConnection()) {
+		return -1;
+	}
 	if (getUnscaledMilliVolts(channel, &mVunscaled, useRaw) < 0) {
 		return -1;
 	}
@@ -188,6 +203,9 @@ int VImon::getMilliAmps(int channel, float *value, bool useRaw) {
 
 int VImon::getBipolarMilliAmps(float *value, bool useRaw) {
 	float mVunscaled, i1, i2;
+	if (!_adc->testConnection()) {
+		return -1;
+	}
 	// read both current channels
 	if (getUnscaledMilliVolts(2, &mVunscaled, useRaw) < 0) return -1;
 	i1 = mVunscaled * I1_MA_PER_MV;
@@ -206,7 +224,7 @@ void VImon::readAllChannels(std::string& retStr, bool useRaw) {
 	float mVunscaled;
 	float voltage_mv;
 	float current1_ma, current2_ma;
-	float pt100ohm, pt100temp;
+	float pt100ohm = 0.0, pt100temp = 0.0;
 	int i;
 	char buf[64];
 
@@ -214,6 +232,12 @@ void VImon::readAllChannels(std::string& retStr, bool useRaw) {
 		readRaw();
 
 	retStr = "";
+
+	if (!_adc->testConnection()) {
+		retStr += "ADC Read Error";
+		return;
+	}
+
 	// show raw values
 	for (i=0; i<4; i++) {
 		sprintf(buf, "%5d ",rawValue[i]);
